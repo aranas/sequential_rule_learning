@@ -94,9 +94,8 @@ def generate_data(example_obs,len_seq):
     trainset, testset = random_split(seqdata, [train_set_size, test_set_size])
     trainseq = trainset[:][0]
     trainout = trainset[:][1]
-
     trainseq = convert_onehot2seq(trainseq)
-    recovery_prob = magic.model_recovery(trainseq,trainout,example_obs)
+    recovery_prob = magic.model_recovery(trainseq,trainout,example_obs,[2,4],[0,5,10],1000)
 
     return trainset, testset
 
@@ -144,7 +143,7 @@ def train(sequence,label,model,optimizer,criterion):
 
 #%%
 len_seq = 2
-example_obs = [1,2]
+example_obs = [0,1]
 def run(len_seq,example_obs):
     # define input data parameters
     #len_seq = 1
@@ -195,15 +194,26 @@ def run(len_seq,example_obs):
     print('accuracy: %f ' % ((correct/len(testloader))))
 
     plt.plot(lossHistory)
-    plt.title('Loss - train on rules {0} and sequence length {1}, acc on train = {2}'.format(rulenames,len_seq,(correct/len(testloader))))
+    plt.title('Loss - rules {0} and {1} steps, acc on test = {2}'.format(rulenames,len_seq,(correct/len(testloader))))
     plt.xlabel('Epoch')
     plt.ylabel('Loss')
     #plt.show()
-    plt.savefig('figures/loss_SRN_{0}_{1}'.format(example_obs,len_seq))
+    plt.savefig('../figures/loss_SRN_{0}_{1}'.format(example_obs,len_seq))
 
 
 if __name__ == '__main__':
     print('train elman RNN on magic spell task \n')
     print('the training data is generated using rules "reverse" & "force A", sequences were of length 2')
 
-    run(2,[1,2])
+    len_seq = 2
+    rule = [0,1]
+
+    seq = magic.generate_trial(rule,len_seq, replacement=True)
+# give summary of parameters
+print("There are {0} unique sequences (operator-input combinations) of length {2}, \
+given {1} true underlying rules \
+and sampling with replacement.".format(len(seq),len(rule),len_seq))
+obs_key = list(itertools.permutations(range(6),len(rule)))
+print("There are {0} possible assignments of {1} possilbe rules onto the {2} operator symbols".format(len(obs_key),6,len(example_obs)))
+#for rule in obs_key:
+run(len_seq,rule)
