@@ -78,7 +78,7 @@ def transform(trials,rule_sel,allRules):
     return np.array(outputs)
 
 def model_recovery(seq,out,true_rules,all_reps,noiselevels,shuffles):
-    rng = default_rng(5)
+
     # for a given set of sequences (data), return which rule assignments
     # out of all possible combinations of all_rules
     # is ambiguous with the true_rules
@@ -102,12 +102,13 @@ def model_recovery(seq,out,true_rules,all_reps,noiselevels,shuffles):
             for sh in range(shuffles):
                 # for any given ground truth model (row), add noise
                 if noisel ==0: noisel=1
+                noisy_data = copy.copy(out_true)
                 id_noisy = rng.choice(ntrials,nerrors,replace=False)
-                out_true[id_noisy] = 1-out_true[id_noisy]
+                noisy_data[id_noisy] = 1-noisy_data[id_noisy]
                 # compute likelihood for all models
                 tmpsum = np.zeros(out_alt.shape)
-                tmpsum[np.where(out_true == out_alt)] = 1-noisel*0.01
-                tmpsum[np.where(out_true != out_alt)] = noisel*0.01
+                tmpsum[np.where(noisy_data == out_alt)] = 1-noisel*0.01
+                tmpsum[np.where(noisy_data != out_alt)] = noisel*0.01
                 likelihood = (np.prod(tmpsum,axis=1)).reshape(len(tmpsum),1)
                     # decide which model has more evidence
                 if any(likelihood==0):
@@ -146,11 +147,11 @@ if __name__ == '__main__':
     n_ops = 2       #number of operator symbols seen
     n_rules = 6    #number possible rule taken into account
 
-    # Ground truth assignment
+        # Ground truth assignment
     ideal_obs = np.stack([d['rule'] for d in dRules[0:n_ops]],axis=2).transpose(2,0,1)
     ideal_key = list(range(n_ops))
 
-    # All possible rule assignment strategies
+        # All possible rule assignment strategies
     all_obs = np.stack([d['rule'] for d in dRules[0:n_rules]],axis=2).transpose(2,0,1)
     obs_key = list(itertools.permutations(range(n_rules), n_ops))
 
@@ -159,23 +160,23 @@ if __name__ == '__main__':
         new_observer = all_obs[list(combination)]
         observers.append(new_observer)
 
-    # Generate all possible sequences + output according to ideal observer
+        # Generate all possible sequences + output according to ideal observer
     seq = generate_trial(ideal_key,len_seq, replacement=True)
     out = transform(seq,list(range(n_ops)),dRules)
 
-    # give summary of parameters
+        # give summary of parameters
     print("There are {0} unique sequences (operator-input combinations) of length {2}, \
     given {1} true underlying rules \
     and sampling with replacement.".format(len(seq),n_ops,len_seq))
 
     print("There are {0} possible assignments of {1} possilbe rules onto the {2} operator symbols".format(len(obs_key),n_rules,n_ops))
 
-    ### Model recovery ###
-    ## FIXME: after code cleanup model recovery gives different results than before
+        ### Model recovery ###
+
     shuffles = 1000
     all_reps = list([4,8,10])
     noiselevels = list([0,2,5,10])
-
+    rng = default_rng(5)
     RDM = []
     for obs in obs_key: #for data given each possible ground-truth model get likelihood ratio for all others
         y = transform(seq,obs,dRules)
@@ -190,7 +191,7 @@ if __name__ == '__main__':
     fig, axs = plt.subplots(RDM.shape[0], len(noiselevels),figsize=(20,20))
     for r,reps in enumerate(all_reps):
         for i,noisel in enumerate(noiselevels):
-            im = axs[r,i].imshow(mean_RDM[r,i,:,:],cmap='magma',interpolation=None)
+            im = axs[r,i].imshow(ratio[r,i,:,:],cmap='magma',interpolation=None)
             axs[r,i].set_title('{0}% noise and {1} trials'.format(noisel,reps*len(seq)))
             fig.colorbar(im,ax=axs[r,i])
     plt.show()
