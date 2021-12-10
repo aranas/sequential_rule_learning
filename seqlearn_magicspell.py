@@ -12,25 +12,25 @@ import matplotlib.pyplot as plt
 #define all contingency tables
 #rows refer to latent state, columns refer to input cue (A or B)
 dRules = [
-    {'name':'op_none', 'rule':np.array([[0,0],[1,1]]), 'ruletype':'state_only'},
-    {'name':'op_reverse', 'rule':np.array([[1,1],[0,0]]), 'ruletype':'state_only'},
-    {'name':'op_forceA', 'rule':np.array([[1,0],[1,0]]),'ruletype':'input_only'},
-    {'name':'op_forceB', 'rule':np.array([[0,1],[0,1]]),'ruletype':'input_only'},
-    {'name':'op_crossA', 'rule':np.array([[1,0],[0,1]]),'ruletype':'interaction'},
-    {'name':'op_crossB', 'rule':np.array([[0,1],[1,0]]),'ruletype':'interaction'},
-    {'name':'op_except1', 'rule':np.array([[1,0],[0,0]]),'ruletype':'interaction'},
-    {'name':'op_except2', 'rule':np.array([[0,1],[0,0]]),'ruletype':'interaction'},
-    {'name':'op_except3', 'rule':np.array([[0,0],[1,0]]),'ruletype':'interaction'},
-    {'name':'op_except4', 'rule':np.array([[0,0],[0,1]]),'ruletype':'interaction'},
-    {'name':'op_exceptR1', 'rule':np.array([[0,1],[1,1]]),'ruletype':'interaction'},
-    {'name':'op_exceptR2', 'rule':np.array([[1,0],[1,1]]),'ruletype':'interaction'},
-    {'name':'op_exceptR3', 'rule':np.array([[1,1],[0,1]]),'ruletype':'interaction'},
-    {'name':'op_exceptR4', 'rule':np.array([[1,1],[1,0]]),'ruletype':'interaction'}
+    {'name':'none', 'rule':np.array([[0,0],[1,1]]), 'ruletype':'state_only'},
+    {'name':'reverse', 'rule':np.array([[1,1],[0,0]]), 'ruletype':'state_only'},
+    {'name':'forceA', 'rule':np.array([[1,0],[1,0]]),'ruletype':'input_only'},
+    {'name':'forceB', 'rule':np.array([[0,1],[0,1]]),'ruletype':'input_only'},
+    {'name':'crossA', 'rule':np.array([[1,0],[0,1]]),'ruletype':'interaction'},
+    {'name':'crossB', 'rule':np.array([[0,1],[1,0]]),'ruletype':'interaction'},
+    {'name':'except1', 'rule':np.array([[1,0],[0,0]]),'ruletype':'interaction'},
+    {'name':'except2', 'rule':np.array([[0,1],[0,0]]),'ruletype':'interaction'},
+    {'name':'except3', 'rule':np.array([[0,0],[1,0]]),'ruletype':'interaction'},
+    {'name':'except4', 'rule':np.array([[0,0],[0,1]]),'ruletype':'interaction'},
+    {'name':'exceptR1', 'rule':np.array([[0,1],[1,1]]),'ruletype':'interaction'},
+    {'name':'exceptR2', 'rule':np.array([[1,0],[1,1]]),'ruletype':'interaction'},
+    {'name':'exceptR3', 'rule':np.array([[1,1],[0,1]]),'ruletype':'interaction'},
+    {'name':'exceptR4', 'rule':np.array([[1,1],[1,0]]),'ruletype':'interaction'}
 ]
 
 # Create an example assignment using the first 3 rules in the ruledict
 
-def generate_trial(operators,len_seq,replacement=False):
+def generate_trial(operators,input_ids,len_seq,replacement=False):
     # This function defines all possible permutations of init state & sequence of binary input cues and operators.
     # Output is an array of shape n X len_seq+1.
     # Each row is one of n unique ordered permutations.
@@ -39,14 +39,14 @@ def generate_trial(operators,len_seq,replacement=False):
     # The first element
     seq = []
     if replacement:
-        combi_inputcue = list(itertools.product([0,1],repeat=len_seq))
-        combi_operators = list(itertools.product(range(len(operators)),repeat=len_seq))
+        combi_inputcue = list(itertools.product(input_ids,repeat=len_seq))
+        combi_operators = list(itertools.product(operators,repeat=len_seq))
     else:
         if len_seq == 2: # if seq of 2 sample binary cue evenly
-            combi_inputcue = list(itertools.permutations([0,1],len_seq))
+            combi_inputcue = list(itertools.permutations(input_ids,len_seq))
         else:
-            combi_inputcue = list(itertools.product([0,1],repeat=len_seq))
-        combi_operators = list(itertools.permutations(range(len(operators)),len_seq))
+            combi_inputcue = list(itertools.product(input_ids,repeat=len_seq))
+        combi_operators = list(itertools.permutations(operators,len_seq))
 
     for init in range(2):
         for cue in combi_inputcue:
@@ -56,7 +56,12 @@ def generate_trial(operators,len_seq,replacement=False):
 
     return seq
 
-def transform(trials,rule_sel,allRules):
+def transform(trials,allRules,**kwargs):
+    true_rules = kwargs.get('true_rules',None)
+    new_rules = kwargs.get('new_rules',None)
+    if new_rules is not None:
+        allRules[true_rules[0]],allRules[true_rules[1]] = allRules[new_rules[0]], allRules[new_rules[1]],
+
     outputs = []
     for itrial,trial in enumerate(trials):
         #print('trial # %i' % itrial)
@@ -66,9 +71,11 @@ def transform(trials,rule_sel,allRules):
                 state = x[0]
                 continue
             cue = x[1]
+            while cue > 1:
+                cue -= 2
             id_operator = x[2]
 
-            rule = allRules[rule_sel[id_operator]]['rule']
+            rule = allRules[id_operator]['rule']
             #print('current state %i and current cue %i' %(state,cue))
             #print(rule)
             state = rule[state,cue]
@@ -77,8 +84,8 @@ def transform(trials,rule_sel,allRules):
         outputs.append(state)
     return np.array(outputs)
 
-def model_recovery(seq,out,true_rules,all_reps,noiselevels,shuffles):
-
+def model_recovery(seq,out,true_rules,all_reps,noiselevels,shuffles,verbose=False):
+    rng = default_rng(5)
     # for a given set of sequences (data), return which rule assignments
     # out of all possible combinations of all_rules
     # is ambiguous with the true_rules
@@ -87,7 +94,8 @@ def model_recovery(seq,out,true_rules,all_reps,noiselevels,shuffles):
     all_out = []
     obs_key = list(itertools.permutations(range(len(all_obs)), len(true_rules)))
     for combination in obs_key:
-        all_out.append(transform(seq,combination,dRules))
+        #replace rules:
+        all_out.append(transform(seq,copy.copy(dRules), true_rules=true_rules, new_rules=combination))
 
     RDM = np.empty([len(all_reps),len(noiselevels),shuffles,len(all_out)])
     for r,nrepeats in enumerate(all_reps):
@@ -117,20 +125,23 @@ def model_recovery(seq,out,true_rules,all_reps,noiselevels,shuffles):
                     LR = np.log(likelihood/np.transpose(likelihood))
                     RDM[r,i,sh,:] = LR[-1][0:-1]
 
-    ratio = np.nansum((RDM>0).astype(int),2)/shuffles
-    # Find out which rules are confounded
-    tmprdm = ratio[0,0,:]
-    numUniq = 182 - sum(tmprdm)
-    id_confound = np.where(tmprdm==0)[0]
-    print('{0} ambiguous rules given these data'.format(len(id_confound)))
-    confounded=[]
-    for t in id_confound:
-        r1 = obs_key[t]
-        if len(r1)==1:
-            print(dRules[t]['name'])
-        else:
-            print((dRules[r1[0]]['name'],dRules[r1[1]]['name']))
-        confounded.append(r1)
+    if verbose:
+        ratio = np.nansum((RDM>0).astype(int),2)/shuffles
+        # Find out which rules are confounded
+        tmprdm = ratio[0,0,:]
+        numUniq = 182 - sum(tmprdm)
+        id_confound = np.where(tmprdm==0)[0]
+        print('{0} ambiguous rules given data of rule {1}'.format(len(id_confound)-1,(dRules[true_rules[0]]['name'],dRules[true_rules[1]]['name'])))
+        confounded=[]
+        for t in id_confound:
+            r1 = obs_key[t]
+            if r1 == true_rules:
+                continue
+            if len(r1)==1:
+                print(dRules[t]['name'])
+            else:
+                print((dRules[r1[0]]['name'],dRules[r1[1]]['name']))
+            confounded.append(r1)
 
     return RDM
 
@@ -139,7 +150,7 @@ def model_recovery(seq,out,true_rules,all_reps,noiselevels,shuffles):
     #operators = [0,1,2]
     #model = np.stack([dRules[i]['rule'] for i in operators])
     #trials = generate_trial(operators,len_seq, replacement=False)
-    #out = transform(trials,operators,dRules)
+    #out = transform(trials,dRules)
 
 if __name__ == '__main__':
     # Task parameters:
@@ -161,8 +172,8 @@ if __name__ == '__main__':
         observers.append(new_observer)
 
         # Generate all possible sequences + output according to ideal observer
-    seq = generate_trial(ideal_key,len_seq, replacement=True)
-    out = transform(seq,list(range(n_ops)),dRules)
+    seq = generate_trial(ideal_key,[0,1],len_seq, replacement=True)
+    out = transform(seq,dRules)
 
         # give summary of parameters
     print("There are {0} unique sequences (operator-input combinations) of length {2}, \
@@ -176,14 +187,32 @@ if __name__ == '__main__':
     shuffles = 1000
     all_reps = list([4,8,10])
     noiselevels = list([0,2,5,10])
-    rng = default_rng(5)
     RDM = []
     for obs in obs_key: #for data given each possible ground-truth model get likelihood ratio for all others
-        y = transform(seq,obs,dRules)
-        RDM.append(model_recovery(seq,y,obs,all_reps,noiselevels,shuffles))
+        seq = generate_trial(obs,[0,1],len_seq, replacement=True)
+        y = transform(seq,dRules)
+        RDM.append(model_recovery(seq,y,obs,all_reps,noiselevels,shuffles,verbose=False))
     RDM = np.stack(RDM,axis=4)
     # What is the probability of finding correct model given noisy data? Across multiple simulations
     ratio = np.nansum((RDM>0).astype(int),2)/RDM.shape[2]
+
+    # Find out which rules are confounded
+    tmprdm = ratio[0,0,:,:]
+    for i,row in enumerate(tmprdm):
+        tmprdm[i,i] = np.nan
+    numUniq = 182 - np.nansum(tmprdm,axis=0)
+    nconfound = collections.Counter(numUniq)
+    id_confound = np.where(tmprdm==0)
+    seen = set()
+    confoundpairs = [t for t in zip(id_confound[0],id_confound[1]) if tuple(sorted(t)) not in seen and not seen.add(tuple(sorted(t)))]
+    print('{0} rule assignments are non-ambiguous.'.format(nconfound[1]))
+    print('confounded rule assignments:')
+    for t in confoundpairs:
+     r1 = obs_key[t[0]]
+     r2 = obs_key[t[1]]
+     print('{0} and {1}'.format((dRules[r1[0]]['name'],dRules[r1[1]]['name']),(dRules[r2[0]]['name'],dRules[r2[1]]['name'])))
+
+
     ratio[ratio==0] = 0.5
 
     mean_RDM = np.nanmean(RDM,axis=2).astype(int)
