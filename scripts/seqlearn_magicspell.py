@@ -7,6 +7,8 @@ from numpy.random import default_rng
 import collections
 import matplotlib.pyplot as plt
 
+
+
 # %%
 
 #define all contingency tables

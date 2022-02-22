@@ -4,10 +4,12 @@
 import sys
 sys.path.append('/Users/sophiearana/Documents/Work/Projects/SeqLearning/code')
 import numpy as np
+import pandas as pd
 import random
 import seqlearn_magicspell as magic
 import time
 import pickle
+import copy
 
 import torch
 import torch.nn as nn
@@ -16,7 +18,7 @@ from torch.utils.tensorboard import SummaryWriter
 import itertools
 
 import matplotlib.pyplot as plt
-from tabulate import tabulate
+import seaborn as sns
 
 #%%
 class SeqData(Dataset):
@@ -140,6 +142,8 @@ def train(sequence,label,model,optimizer,criterion):
     #Back-propagate
     loss.backward()
     optimizer.step()
+    #clipping gradients
+    #torch.nn.utils.clip_grad_norm(parameters=model.parameters(), max_norm=10, norm_type=2.0)
 
     return output, loss.item()
 
@@ -202,14 +206,14 @@ def run(len_seq,example_obs):
     #plt.show()
     plt.savefig('../figures/loss_SRN_{0}_{1}'.format(example_obs,len_seq))
 
-def run_generalise(len_seq,ops1,ops2):
+def train_generalise(len_seq,ops1,ops2,ops3,nseed):
         # define model & training parameters
         len_inputvec = 2+4+6 #binary input state, 4 input cues, 6 possible operators
         batchSize = 1
         recurrentSize = 4
         hiddenSize = 6
         learningRate = 0.001
-        epochs = 1000
+        epochs = 500
         rulenames = [magic.dRules[i]['name'] for i in ops1]
 
         model = OneStepRNN(len_inputvec,1,recurrentSize, hiddenSize)
@@ -217,17 +221,18 @@ def run_generalise(len_seq,ops1,ops2):
         criterion = nn.CrossEntropyLoss()
         optimizer = torch.optim.Adam(model.parameters(), lr=learningRate)
 
+        #print('create training data')
+        dattrain1, tmp = generate_data(ops1,[0,1],len_seq,1) # rule 1, inputs A&B
+        dattrain2, tmp = generate_data(ops2,[2,3],len_seq,1) # rule 2, inputs C&D
+        dattest, tmp = generate_data(ops1,[2,3],len_seq,1) # rule 1, inputs C&D
+        dattest2, tmp = generate_data(ops3,[2,3],len_seq,1) # rule 3, inputs C&D
 
-        dattrain1, tmp = generate_data(ops1,[0,1],len_seq,1)
-        dattrain2, tmp = generate_data(ops2,[2,3],len_seq,1)
-        dattest, tmp = generate_data((ops1[0],ops2[0]),[2,3],len_seq,1)
         #dattrain = torch.utils.data.ConcatDataset([dattrain1,dattrain2])
 
         trainloader1 = DataLoader(dattrain1, batch_size=batchSize, shuffle=True)
         trainloader2 = DataLoader(dattrain2, batch_size=batchSize, shuffle=True)
-
         testloader = DataLoader(dattest, batch_size=batchSize, shuffle=True)
-
+        testloader2 = DataLoader(dattest2, batch_size=batchSize, shuffle=True)
     # viz
     #for x,y in trainloader:
     #    break
@@ -235,10 +240,10 @@ def run_generalise(len_seq,ops1,ops2):
     #hState = torch.zeros(1,recurrentSize)[0]
     #writer.add_graph(model,(x[0][0],hState))
     #writer.close()
-
+        random.seed(nseed)
         model.train()
-        start_time = time.time()
         # train on rule 1 given inputs A & B
+        #print('train on rule {0}, given inputs A&B'.format( [magic.dRules[i]['name'] for i in ops1]))
         lossHistory = []
         for epoch in range(epochs):
             lossTotal = 0
@@ -247,6 +252,8 @@ def run_generalise(len_seq,ops1,ops2):
                 lossTotal +=loss
             lossHistory.append(lossTotal)
         # train on rule 2 given inputs C & D
+        #print('train on rule {0}, given inputs C&D'.format([magic.dRules[i]['name'] for i in ops2]))
+        random.seed(nseed)
         lossHistory2 = []
         for epoch in range(epochs):
             lossTotal = 0
@@ -254,95 +261,154 @@ def run_generalise(len_seq,ops1,ops2):
                 output, loss = train(x,y,model,optimizer,criterion)
                 lossTotal +=loss
             lossHistory2.append(lossTotal)
+
         # train on rule 1 given inputs C & D
+        #print('train on rule {0}, given inputs C&D'.format([magic.dRules[i]['name'] for i in ops1]))
+        model_copy = copy.copy(model)
+        random.seed(nseed)
         lossHistory3 = []
         for epoch in range(epochs):
             lossTotal = 0
             for x,y in testloader:
-                output, loss = train(x,y,model,optimizer,criterion)
+                output, loss = train(x,y,model_copy,optimizer,criterion)
                 lossTotal +=loss
             lossHistory3.append(lossTotal)
-        print("--- %s seconds to train & retrain---" % (time.time() - start_time))
 
-        model.eval()
-        correct = 0
-        for x,y in testloader:
-            hidden = torch.zeros(1, recurrentSize)[0]
-            for step in x[0]:
-                hidden,h_activation,y_hat = model.get_activations(step,hidden)
-            correct += int(y.detach().numpy()==np.where(y_hat==y_hat.max()))
+        # train on rule 3 given inputs C & D
+        lossHistory4 = []
+        if ops3 is not None:
+            #print('train on rule {0}, given inputs C&D'.format([magic.dRules[i]['name'] for i in ops3]))
+
+            model_copy = copy.copy(model)
+            random.seed(nseed)
+            for epoch in range(epochs):
+                lossTotal = 0
+                for x,y in testloader2:
+                    output, loss = train(x,y,model_copy,optimizer,criterion)
+                    lossTotal +=loss
+                lossHistory4.append(lossTotal)
+        # train on rule 1 given inputs A&B again
+        lossHistory5 = []
+        for epoch in range(epochs):
+            lossTotal = 0
+            for x,y in trainloader1:
+                output, loss = train(x,y,model_copy,optimizer,criterion)
+                lossTotal +=loss
+            lossHistory5.append(lossTotal)
+
+        #model.eval()
+        #correct = 0
+        #for x,y in testloader:
+        #    hidden = torch.zeros(1, recurrentSize)[0]
+        #    for step in x[0]:
+        #        hidden,h_activation,y_hat = model.get_activations(step,hidden)
+        #    correct += int(y.detach().numpy()==np.where(y_hat==y_hat.max()))
             #print(y, y_hat)
         #print('accuracy: %f ' % ((correct/len(testloader))))
+
         #plt.plot(lossHistory+lossHistory2)
         #plt.title('Loss - rules {0} on new inputs, acc on test = {1}'.format(rulenames,(correct/len(testloader))))
         #plt.xlabel('Epoch')
         #plt.ylabel('Loss')
         #plt.savefig('../figures/lossgeneral_SRN_{0}_{1}'.format(ops1,ops2))
+        return np.stack((lossHistory,lossHistory2,lossHistory3,lossHistory4,lossHistory5),axis=1)
 
-        return lossHistory, lossHistory2, lossHistory3
+def run_generalise_1step(ops1,ops2,ops3):
+    # Train on single rules, learn a two rules blockwise sequentially each with different inputs
+    # Test on generalisation of each rule to the new inputs
+    # train on R1 with inputs A&B, then train on R2 with inputs C&D, test on R1 C&D or R2 A&B
+
+    len_seq = 1
+    rulenames = [magic.dRules[i]['name'] for i in [ops1,ops2,ops3]]
+    legendtxt = ['Task 1 - %s'%rulenames[0],'Task 2 - %s'%rulenames[1],'Task 3 - generalise %s'%rulenames[0],'Task 3 - control %s'%rulenames[2], 'Task 3 - control interference']
+
+    losses = []
+    for i in range(50):
+        print("random init # {0}".format(i))
+        losses.append(train_generalise(len_seq,[ops1],[ops2],[ops3],i))
+    losses = (np.stack(losses,axis=2))
+    with open('../results/lossgeneral_{0}_{1}_{2}.txt'.format(ops1,ops2,ops3),"wb") as fp:
+        pickle.dump(losses, fp)
+    print("file saved under ../results/lossgeneral_{0}_{1}_{2}.txt".format(ops1,ops2,ops3))
+
+    nepoch,nblock,nshuf = losses.shape
+
+    plt.figure()
+    for i in range(nblock):
+        df = pd.DataFrame(np.transpose(losses[:,i,:],[1,0])).melt()
+        sns.lineplot(x="variable", y="value", data=df)
+    plt.legend(labels=legendtxt)
+    plt.ylim([0,8])
+    plt.xlabel('training epochs')
+    plt.ylabel('training loss')
+    plt.savefig('../figures/lossgeneral_{0}_{1}_{2}.jpg'.format(ops1,ops2,ops3))
+    print("figure saved under ../figures/lossgeneral_{0}_{1}_{2}.jpg".format(ops1,ops2,ops3))
+
+def run_generalise_2step(pair1,pair2,pair3,pair4):
+    # Train on single rules, learn a two rules blockwise sequentially each with different inputs
+    # Test on generalisation of each rule to the new inputs
+    # train on R1 with inputs A&B, then train on R2 with inputs C&D, test on R1 C&D or R2 A&B
+
+    len_seq = 2
+    rulenames = [magic.dRules[i]['name'] for i in [pair1[0],pair1[1],pair2[0],pair2[1],pair3[0],pair3[1],pair4[0],pair4[1]]]
+    legendtxt = ['Task 1 - {0}&{1}'.format(rulenames[0],rulenames[1]),'Task 2 - {0}&{1}'.format(rulenames[2],rulenames[3]),'Task 3 - generalise {0}&{1}'.format(rulenames[4],rulenames[5]),'Task 3 - control {0}&{1}'.format(rulenames[6],rulenames[7]), 'Task 3 - control interference']
+
+    losses = []
+    for i in range(50):
+        print("random init # {0}".format(i))
+        losses.append(train_generalise(len_seq,pair1,pair2,pair3,i))
+    losses = (np.stack(losses,axis=2))
+    with open('../results/lossgeneral_{0}_{1}_{2}.txt'.format(pair1,pair2,pair3),"wb") as fp:
+        pickle.dump(losses, fp)
+    print("file saved under ../results/lossgeneral_{0}_{1}_{2}.txt".format(pair1,pair2,pair3))
+
+    nepoch,nblock,nshuf = losses.shape
+
+    plt.figure()
+    for i in range(nblock):
+        df = pd.DataFrame(np.transpose(losses[:,i,:],[1,0])).melt()
+        sns.lineplot(x="variable", y="value", data=df)
+    plt.legend(labels=legendtxt)
+    plt.ylim([0,50])
+    plt.xlabel('training epochs')
+    plt.ylabel('training loss')
+    plt.savefig('../figures/lossgeneral_{0}_{1}_{2}.jpg'.format(pair1,pair2,pair3))
+    print("figure saved under ../figures/lossgeneral_{0}_{1}_{2}.jpg".format(pair1,pair2,pair3))
 
 #%%
 
 if __name__ == '__main__':
-    #len_seq = 2
-    #rule = [1,2]
-    #seq = magic.generate_trial(rule,len_seq, replacement=True)
-    # give summary of parameters
-    #print("There are {0} unique sequences (operator-input combinations) of length {2}, \
-    #given {1} true underlying rules \
-    #and sampling with replacement.".format(len(seq),len(rule),len_seq))
-    #obs_key = list(itertools.permutations(range(6),len(rule)))
-    #print("There are {0} possible assignments of {1} possilbe rules onto the {2} operator symbols".format(len(obs_key),6,len(example_obs)))
-    #for rule in obs_key:
 
-    obs_key = list(itertools.permutations(range(6), 4))
+    #"Force A" & "Reverse", control: "Force B"
+    #ops1,ops2,ops3 = 2,1,3
+    #run_generalise_1step(ops1,ops2,ops3)
+    #"Force A" & "None"
+    #ops1,ops2,ops3 = 2,0,3
+    #run_generalise_1step(ops1,ops2,ops3)
+    #"cross A" & "force A" control: "Cross B"
+    #ops1,ops2,ops3 = 4,2,5
+    #run_generalise_1step(ops1,ops2,ops3)
+    #"force A" & "Cross A" control: "Force B"
+    #ops1,ops2,ops3 = 2,4,3
+    #run_generalise_1step(ops1,ops2,ops3)
+    #Cross A & Force A - Force B & Reverse, test: Cross B
+    pair1,pair2,pair3,pair4 = (4,2),(1,3),(4,3),(5,3)
+    run_generalise_2step(pair1,pair2,pair3,pair4)
 
-    len_seq = 2
-    for combination in obs_key:
-        ops1 = combination[2:4]
-        ops2 = combination[0:2]
+with open('../results/lossgeneral_{0}_{1}_{2}.txt'.format(pair1,pair2,pair3),"rb") as fp:
+    losses = pickle.load(fp)
 
-        # if rule is ambiguous skip
-        ambig = [(0,1),(1,0),(0,4),(1,5),(0,5),(1,4),(4,0),(5,1),(4,1),(5,0),(4,5),(5,4)]
-        if ops1 in ambig or ops2 in ambig:
-            continue
-        print("train on rules {0} for 1000 epochs, then train on rules{1}".format(ops1,ops2))
-        loss1, loss2, loss3 = run_generalise(len_seq,ops1,ops2)
-        with open('../results/lossgeneral_{0}_{1}.txt'.format(ops1[0],ops2),"wb") as fp:
-            pickle.dump((loss1, loss2, loss3), fp)
-        print("file saved under ../results/lossgeneral_{0}_{1}.txt".format(ops1[0],ops2))
+nepoch,nblock,nshuf = losses.shape
+rulenames = [magic.dRules[i]['name'] for i in [pair1[0],pair1[1],pair2[0],pair2[1],pair3[0],pair3[1],pair4[0],pair4[1]]]
+legendtxt = ['Task 1 - {0}&{1}'.format(rulenames[0],rulenames[1]),'Task 2 - {0}&{1}'.format(rulenames[2],rulenames[3]),'Task 3 - generalise {0}&{1}'.format(rulenames[4],rulenames[5]),'Task 3 - control {0}&{1}'.format(rulenames[6],rulenames[7]), 'Task 3 - control interference']
 
-losses = []
-rules = []
-for combination in obs_key:
-    ops1 = combination[0:2]
-    ops2 = combination[2:4]
-
-        # if rule is ambiguous skip
-    ambig = [(0,1),(1,0),(0,4),(1,5),(0,5),(1,4),(4,0),(5,1),(4,1),(5,0),(4,5),(5,4)]
-    if ops1 in ambig or ops2 in ambig:
-        continue
-
-    try:
-        print()
-        with open('../results/lossgeneral_{0}_{1}.txt'.format(ops1[0],ops2),"rb") as fp:
-            loss1,loss2,loss3 = pickle.load(fp)
-    except:
-        continue
-    losses.append(np.vstack((loss1,loss2,loss3)))
-    rules.append((ops1,ops2))
-len(losses)
-count = 2
-fig, axs = plt.subplots(16, 4,figsize=(20,60))
-for i in range(16):
-    for j in range(4):
-        count+=1
-        ops1 = rules[count][0]
-        ops2 = rules[count][1]
-        im = axs[i,j].plot(losses[count][0],label='rule 1 on A&B')
-        im = axs[i,j].plot(losses[count][1],label='rule 2 on C&D')
-        im = axs[i,j].plot(losses[count][2],label='rule 1 on C&D')
-        axs[i,j].set_title("{0} & {1}".format((magic.dRules[ops1[0]]['name'],magic.dRules[ops1[1]]['name']),(magic.dRules[ops2[0]]['name'],magic.dRules[ops2[1]]['name'])))
-        axs[i,j].set_ylim(0,30)
-        axs[i,j].set_ylabel('Loss')
-axs[i,j].legend()
+plt.figure()
+for i in range(nblock):
+    df = pd.DataFrame(np.transpose(losses[:,i,:],[1,0])).melt()
+    sns.lineplot(x="variable", y="value", data=df)
+plt.legend(labels=legendtxt)
+plt.xlabel('training epochs')
+plt.ylabel('training loss')
+plt.ylim([0,50])
+plt.savefig('../figures/lossgeneral_{0}_{1}_{2}.jpg'.format(pair1,pair2,pair3))
+print("figure saved under ../figures/lossgeneral_{0}_{1}_{2}_{3}.jpg".format(pair1,pair2,pair3,pair4))
