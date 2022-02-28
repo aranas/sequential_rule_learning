@@ -1,51 +1,96 @@
 '''First pass analysing behavioral data'''
 
 #%%
+import os
 import json
+from pathlib import Path as pth
 import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
 
 # %%
 
-data = []
-with open("/Library/WebServer/Documents/tasks/magic_spell/data/data/ftUnKjSskK66.txt", "r") as f:
-    data = f.read().split('\n')
-data = [json.loads('{' + line + '}') for line in data]
+rule_names = np.array(['force', 'cross', 'reverse'])
 
-trial_data = data[0]['sdata']
-trial_data.keys()
-experiment_data = data[1]['edata']
-experiment_data.keys()
+def check_submission(filename, experimentdata, parametersdata, blocked_correct):
+    #print out info from servers side
+    print('Subject ID ' + filename)
+    print('Prolific ID ' + experimentdata['expt_turker'])
+    print('Group ' + experimentdata['expt_group'])
+    print('Rule ID: {0}'.format(rule_names[np.unique(parametersdata['ruleid'])]))
+    finish_time = (experimentdata['exp_finishtime'] - experimentdata['exp_starttime'])/1000/60
+    print('Time to finish: %.2f minutes'% np.round(finish_time, decimals=2))
+    #instruct_time = experimentdata['instruct_finishtime'] - experimentdata['exp_starttime']/1000/60
+    instruct_time = (trial_data['resp_timestamp'][1] - experimentdata['exp_starttime'])/1000/60
+    print('Time spend on instructions: %.2f'% np.round(instruct_time, decimals=2))
 
-parameters_data = data[2]['parameters']
-parameters_data.keys()
+    #print out info from prolific side
+    try:
+        print('## Prolific ##')
+        files = pth("data/prolific/demographics").rglob("*.csv")
+        all_csvs = [pd.read_csv(file) for file in files]
+        all_csvs = pd.concat(all_csvs)
+        all_csvs.columns.values.tolist()
+        this_csv = all_csvs.loc[all_csvs['participant_id'] == experiment_data['expt_turker']]
+        print('Prolific time recorded: {0}'.format(np.round(this_csv['time_taken'].values[0]/60)))
+        print('Country of Birth: ' + this_csv['Country of Birth'].values[0])
+        print('Age: {0}'.format(this_csv['age'].values[0]))
+    except Exception:
+        print('no prolific data')
+    bonus_var = 0
+    for iblock, block_data in enumerate(blocked_correct):
+        acc = np.sum(block_data)/len(block_data)
+        pay = (((acc*100)-50)/50)*(3/4)
+        bonus_var = bonus_var+pay
+        print('{0} accuracy in block {1}, bonus is {2}'.format(acc, iblock, pay))
+    print('Total bonus: {0}'.format(bonus_var))
 
-# %%
-# print basic information (prolific ID, experimental group, time it took to finish)
-#print(experiment_data['expt_turker'])
-#print(experiment_data['expt_group'])
-#print('%i minutes' % np.round((experiment_data['exp_finishtime'] - experiment_data['exp_starttime'])/1000/60,decimals=0))
+def retrieve_data(filename):
+    out = []
+    with open(filename, "r") as f:
+        out = f.read().split('\n')
+    out = [json.loads('{' + line + '}') for line in out]
 
-#%%
+    return out
+
 # compute accuracy per block
-
-trial_correct = trial_data['resp_correct'][1:] # first response is in instructions
-blocked_correct = np.array_split(trial_correct, 4)
-
-for iblock, block_data in enumerate(blocked_correct):
-    acc = np.sum(block_data)/len(block_data)
-    print('{0} accuracy in block {1}'.format(acc, iblock))
-
-#%%
-# compute if performance on 1st possible generalisable item
+def acc_per_block(responses_blocked):
+    acc_arr = []
+    for block_data in responses_blocked:
+        acc = np.sum(block_data)/len(block_data)
+        acc_arr.append(acc)
+    return acc_arr
 
 # find which trial was known based on generalised data.
-last_block = parameters_data['block']['trialorder'][-1]
+def retrieve_uniqueness_point(blocked_trialorder):
+    all_trialid = np.unique(blocked_trialorder[0])
+    uniqueness_point = []
+    for trialorder in blocked_trialorder:
+        seen_trialid = []
+        for itrial, trialid in enumerate(trialorder):
+            if np.array_equal(np.unique(seen_trialid), all_trialid):
+                break
+            seen_trialid.append(trialid)
+        uniqueness_point.append(itrial)
+    return uniqueness_point
 
-all_trialid = np.unique(last_block)
-seen_trialid = []
-for itrial, trialid in enumerate(last_block):
-    seen_trialid.append(trialid)
-    if np.array_equal(np.unique(seen_trialid), all_trialid):
-        break
-# correct or not?
-print(blocked_correct[-1][itrial])
+
+#%%
+DATA_DIR = "data/prolific/data"
+
+file_name = 'SIGguHavb8mm.txt'
+for file_name in os.listdir(DATA_DIR):
+    breakpoint()
+    f = os.path.join(DATA_DIR, file_name)
+    data = retrieve_data(f)
+
+    trial_data = data[0]['sdata']
+    experiment_data = data[1]['edata']
+    parameters_data = data[2]['parameters']
+    #preprocess
+    nblock = parameters_data['nb_blocks']
+    blocked_correct = np.array_split(trial_data['resp_correct'][1:], nblock)
+
+    check_submission(file_name, experiment_data, parameters_data, blocked_correct)
+
+    unique_ids = retrieve_uniqueness_point(parameters_data['block']['trialorder'])
