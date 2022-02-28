@@ -39,7 +39,7 @@ def check_submission(filename, experimentdata, parametersdata, blocked_correct):
         print('no prolific data')
     bonus_var = 0
     for iblock, block_data in enumerate(blocked_correct):
-        acc = np.sum(block_data)/len(block_data)
+        acc = np.nansum(block_data)/len(block_data)
         pay = (((acc*100)-50)/50)*(3/4)
         bonus_var = bonus_var+pay
         print('{0} accuracy in block {1}, bonus is {2}'.format(acc, iblock, pay))
@@ -87,20 +87,27 @@ for file_name in os.listdir(DATA_DIR):
     parameters_data = data[2]['parameters']
     #preprocess
     nblock = parameters_data['nb_blocks']
-    blocked_correct = np.array_split(trial_data['resp_correct'][1:], nblock)
+    all_correct = trial_data['resp_correct'][1:]
+    # for now ignore timeouts
+    all_correct = pd.DataFrame(np.array(all_correct)).fillna(0).to_numpy().flatten()
+    blocked_correct = np.array_split(all_correct, nblock)
 
     check_submission(file_name, experiment_data, parameters_data, blocked_correct)
 
     unique_ids = retrieve_uniqueness_point(parameters_data['block']['trialorder'])
 
     #Visualize performance
+    cut_off = 4
     reaction_times = np.array_split(trial_data['resp_reactiontime'][1:], nblock)
-    print('')
-    trial_duration = parameters_data['timing']['seqduration']
+    trial_duration = parameters_data['timing']['seqduration']/1000
+
+    num_above_threshold = len(np.where(trial_data['resp_reactiontime'][1:] > np.round((trial_duration + cut_off)))[0])
+    print('{0} trials would be rejected at cut_off {1}'.format(num_above_threshold, cut_off))
+
     trials_arr = list(range(len(reaction_times[0])))
-    fig = plt.figure(figsize=(15,10))
+    fig = plt.figure(figsize=(15, 10))
     for iblock, block_data in enumerate(reaction_times):
-        block_data = block_data-(trial_duration/1000)
+        block_data = block_data-(trial_duration)
         ymin = 0#np.min(block_data)
         ymax = 10#np.max(block_data)
         # plot RTs
