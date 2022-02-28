@@ -78,9 +78,7 @@ def retrieve_uniqueness_point(blocked_trialorder):
 #%%
 DATA_DIR = "data/prolific/data"
 
-file_name = 'SIGguHavb8mm.txt'
 for file_name in os.listdir(DATA_DIR):
-    breakpoint()
     f = os.path.join(DATA_DIR, file_name)
     data = retrieve_data(f)
 
@@ -94,3 +92,27 @@ for file_name in os.listdir(DATA_DIR):
     check_submission(file_name, experiment_data, parameters_data, blocked_correct)
 
     unique_ids = retrieve_uniqueness_point(parameters_data['block']['trialorder'])
+
+    #Visualize performance
+    reaction_times = np.array_split(trial_data['resp_reactiontime'][1:], nblock)
+    print('')
+    trial_duration = parameters_data['timing']['seqduration']
+    trials_arr = list(range(len(reaction_times[0])))
+    fig = plt.figure(figsize=(15,10))
+    for iblock, block_data in enumerate(reaction_times):
+        block_data = block_data-(trial_duration/1000)
+        ymin = 0#np.min(block_data)
+        ymax = 10#np.max(block_data)
+        # plot RTs
+        plt.subplot(nblock, 1, iblock+1)
+        plt.plot(trials_arr, block_data)
+        # mark incorrect trials
+        idx_incorrect = np.where(blocked_correct[iblock] != 1)
+        plt.vlines(idx_incorrect, ymin, ymax, 'k')
+        # mark first trial that can be inferred through completion based on the other trials
+        plt.vlines(unique_ids[iblock], ymin, ymax, 'r')
+
+        plt.ylim(ymin,ymax)
+    fig.legend(['reaction time', 'uniqueness point', 'incorrect trials'], loc='lower center')
+    fig.suptitle('subject {0} - mean RT was {1}'.format(file_name,np.round(np.mean(reaction_times), decimals=1)))
+    plt.subplots_adjust(left=0.1, right=0.9, bottom=0.1, top=0.9)
