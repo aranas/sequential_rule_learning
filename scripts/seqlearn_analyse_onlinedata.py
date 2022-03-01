@@ -23,6 +23,13 @@ def check_submission(filename, experimentdata, parametersdata, blocked_correct):
     #instruct_time = experimentdata['instruct_finishtime'] - experimentdata['exp_starttime']/1000/60
     instruct_time = (trial_data['resp_timestamp'][1] - experimentdata['exp_starttime'])/1000/60
     print('Time spend on instructions: %.2f'% np.round(instruct_time, decimals=2))
+    #breaks taken
+    for iblock, start_time in enumerate(experiment_data['block_starttime']):
+        pause_time = (experiment_data['block_finishtime'][iblock] - start_time)/1000/60
+        print('spend {0} minutes on pause {1}'.format(np.round(pause_time,decimals=2),iblock))
+    print('## Debrief ##')
+    print('used a tool: ' + experimentdata['debrief_tools'])
+    print(experimentdata['debrief_feedback'])
 
     #print out info from prolific side
     try:
@@ -37,13 +44,10 @@ def check_submission(filename, experimentdata, parametersdata, blocked_correct):
         print('Age: {0}'.format(this_csv['age'].values[0]))
     except Exception:
         print('no prolific data')
-    bonus_var = 0
+
     for iblock, block_data in enumerate(blocked_correct):
         acc = np.nansum(block_data)/len(block_data)
-        pay = (((acc*100)-50)/50)*(3/4)
-        bonus_var = bonus_var+pay
-        print('{0} accuracy in block {1}, bonus is {2}'.format(acc, iblock, pay))
-    print('Total bonus: {0}'.format(bonus_var))
+        print('{0} accuracy in block {1}'.format(acc, iblock))
 
 def retrieve_data(filename):
     out = []
@@ -54,12 +58,13 @@ def retrieve_data(filename):
     return out
 
 # compute accuracy per block
-def acc_per_block(responses_blocked):
-    acc_arr = []
-    for block_data in responses_blocked:
-        acc = np.sum(block_data)/len(block_data)
-        acc_arr.append(acc)
-    return acc_arr
+def compute_bonus(responses,max_bonus):
+    bonus_var = 0
+    for iblock, block_data in enumerate(responses):
+        acc = np.nansum(block_data)/len(block_data)
+        pay = (((acc*100)-50)/50)*(max_bonus/4)
+        bonus_var = bonus_var+pay
+    return bonus_var
 
 # find which trial was known based on generalised data.
 def retrieve_uniqueness_point(blocked_trialorder):
@@ -77,39 +82,44 @@ def retrieve_uniqueness_point(blocked_trialorder):
 
 #%%
 DATA_DIR = "data/prolific/data"
-
+groups = []
+all_names = []
+all_bonus = []
 for file_name in os.listdir(DATA_DIR):
     f = os.path.join(DATA_DIR, file_name)
+    if not os.path.isfile(f):
+        continue
+
     data = retrieve_data(f)
 
     trial_data = data[0]['sdata']
     experiment_data = data[1]['edata']
     parameters_data = data[2]['parameters']
-    #preprocess
+    # preprocess
     nblock = parameters_data['nb_blocks']
     all_correct = trial_data['resp_correct'][1:]
     # for now ignore timeouts
     all_correct = pd.DataFrame(np.array(all_correct)).fillna(0).to_numpy().flatten()
     blocked_correct = np.array_split(all_correct, nblock)
 
+    reaction_times = np.array_split(trial_data['resp_reactiontime'][1:], nblock)
+    reaction_times = pd.DataFrame(np.array(reaction_times)).fillna(0).to_numpy()
+
     check_submission(file_name, experiment_data, parameters_data, blocked_correct)
 
     unique_ids = retrieve_uniqueness_point(parameters_data['block']['trialorder'])
 
     #Visualize performance
-    cut_off = 4
-    reaction_times = np.array_split(trial_data['resp_reactiontime'][1:], nblock)
     trial_duration = parameters_data['timing']['seqduration']/1000
-
-    num_above_threshold = len(np.where(trial_data['resp_reactiontime'][1:] > np.round((trial_duration + cut_off)))[0])
-    print('{0} trials would be rejected at cut_off {1}'.format(num_above_threshold, cut_off))
+    num_timeouts = len([i for i in range(len(trial_data['resp_reactiontime'])) if trial_data['resp_reactiontime'][i] == None])
+    print('{0} trials timed out'.format(num_timeouts))
 
     trials_arr = list(range(len(reaction_times[0])))
     fig = plt.figure(figsize=(15, 10))
     for iblock, block_data in enumerate(reaction_times):
         block_data = block_data-(trial_duration)
         ymin = 0#np.min(block_data)
-        ymax = 10#np.max(block_data)
+        ymax = 5#np.max(block_data)
         # plot RTs
         plt.subplot(nblock, 1, iblock+1)
         plt.plot(trials_arr, block_data)
@@ -120,6 +130,14 @@ for file_name in os.listdir(DATA_DIR):
         plt.vlines(unique_ids[iblock], ymin, ymax, 'r')
 
         plt.ylim(ymin,ymax)
-    fig.legend(['reaction time', 'uniqueness point', 'incorrect trials'], loc='lower center')
-    fig.suptitle('subject {0} - mean RT was {1}'.format(file_name,np.round(np.mean(reaction_times), decimals=1)))
+    fig.legend(['reaction time', 'incorrect trials', 'uniqueness point'], loc='lower center')
+    fig.suptitle('subject {0} - group {2} mean RT was {1}'.format(file_name, np.round(np.mean(reaction_times), decimals=1), experiment_data['expt_group']))
     plt.subplots_adjust(left=0.1, right=0.9, bottom=0.1, top=0.9)
+
+    groups.append(parameters_data['ruleid'])
+    all_names.append(experiment_data['expt_turker'])
+    all_bonus.append(compute_bonus(blocked_correct, 1))
+
+
+bonus_sheet = pd.DataFrame({'id':all_names, 'pay':all_bonus})
+bonus_sheet.to_csv('bonus.csv')
