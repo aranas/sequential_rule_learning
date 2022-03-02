@@ -20,8 +20,12 @@ def check_submission(filename, experimentdata, parametersdata, blocked_correct):
     print('Rule ID: {0}'.format(rule_names[np.unique(parametersdata['ruleid'])]))
     finish_time = (experimentdata['exp_finishtime'] - experimentdata['exp_starttime'])/1000/60
     print('Time to finish: %.2f minutes'% np.round(finish_time, decimals=2))
+    print('Prolific time recorded: {0}'.format(np.round(this_csv['time_taken'].values[0]/60)))
     #instruct_time = experimentdata['instruct_finishtime'] - experimentdata['exp_starttime']/1000/60
-    instruct_time = (trial_data['resp_timestamp'][1] - experimentdata['exp_starttime'])/1000/60
+    try:
+        instruct_time = (trial_data['resp_timestamp'][1] - experiment_data['exp_starttime'])/1000/60
+    except TypeError:
+        instruct_time = (trial_data['resp_timestamp'][2] - experiment_data['exp_starttime'])/1000/60
     print('Time spend on instructions: %.2f'% np.round(instruct_time, decimals=2))
     #breaks taken
     for iblock, start_time in enumerate(experiment_data['block_starttime']):
@@ -34,12 +38,6 @@ def check_submission(filename, experimentdata, parametersdata, blocked_correct):
     #print out info from prolific side
     try:
         print('## Prolific ##')
-        files = pth("data/prolific/demographics").rglob("*.csv")
-        all_csvs = [pd.read_csv(file) for file in files]
-        all_csvs = pd.concat(all_csvs)
-        all_csvs.columns.values.tolist()
-        this_csv = all_csvs.loc[all_csvs['participant_id'] == experiment_data['expt_turker']]
-        print('Prolific time recorded: {0}'.format(np.round(this_csv['time_taken'].values[0]/60)))
         print('Country of Birth: ' + this_csv['Country of Birth'].values[0])
         print('Age: {0}'.format(this_csv['age'].values[0]))
     except Exception:
@@ -81,15 +79,31 @@ def retrieve_uniqueness_point(blocked_trialorder):
 
 
 #%%
+# read in prolific data
+files = pth("data/prolific/demographics").rglob("*.csv")
+all_csvs = [pd.read_csv(file) for file in files]
+all_csvs = pd.concat(all_csvs)
+
 DATA_DIR = "data/prolific/data"
-groups = []
-all_names = []
-all_bonus = []
+all_dates = []
+all_files = []
 for file_name in os.listdir(DATA_DIR):
     f = os.path.join(DATA_DIR, file_name)
     if not os.path.isfile(f):
         continue
+    data = retrieve_data(f)
+    experiment_data = data[1]['edata']
+    this_csv = all_csvs.loc[all_csvs['participant_id'] == experiment_data['expt_turker']]
+    all_dates.append(this_csv['started_datetime'].values[0])
+    all_files.append(file_name)
+df_files = pd.DataFrame({'filename':all_files, 'date&time':all_dates})
+df_files = df_files.sort_values('date&time')
 
+groups = []
+all_names = []
+all_bonus = []
+for file_name in df_files['filename'].values:
+    f = os.path.join(DATA_DIR, file_name)
     data = retrieve_data(f)
 
     trial_data = data[0]['sdata']
@@ -131,7 +145,7 @@ for file_name in os.listdir(DATA_DIR):
 
         plt.ylim(ymin,ymax)
     fig.legend(['reaction time', 'incorrect trials', 'uniqueness point'], loc='lower center')
-    fig.suptitle('subject {0} - group {2} mean RT was {1}'.format(file_name, np.round(np.mean(reaction_times), decimals=1), experiment_data['expt_group']))
+    fig.suptitle('subject {0} - group {2} mean RT was {1}'.format(experiment_data['expt_turker'], np.round(np.mean(reaction_times), decimals=1), experiment_data['expt_group']))
     plt.subplots_adjust(left=0.1, right=0.9, bottom=0.1, top=0.9)
 
     groups.append(parameters_data['ruleid'])
