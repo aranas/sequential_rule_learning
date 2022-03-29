@@ -14,20 +14,20 @@ import matplotlib.pyplot as plt
 #define all contingency tables
 #rows refer to latent state, columns refer to input cue (A or B)
 dRules = [
-    {'name':'none', 'rule':np.array([[0,0],[1,1]]), 'ruletype':'state_only'},
-    {'name':'reverse', 'rule':np.array([[1,1],[0,0]]), 'ruletype':'state_only'},
-    {'name':'forceA', 'rule':np.array([[1,0],[1,0]]),'ruletype':'input_only'},
-    {'name':'forceB', 'rule':np.array([[0,1],[0,1]]),'ruletype':'input_only'},
-    {'name':'crossA', 'rule':np.array([[1,0],[0,1]]),'ruletype':'interaction'},
-    {'name':'crossB', 'rule':np.array([[0,1],[1,0]]),'ruletype':'interaction'},
-    {'name':'except1', 'rule':np.array([[1,0],[0,0]]),'ruletype':'interaction'},
-    {'name':'except2', 'rule':np.array([[0,1],[0,0]]),'ruletype':'interaction'},
-    {'name':'except3', 'rule':np.array([[0,0],[1,0]]),'ruletype':'interaction'},
-    {'name':'except4', 'rule':np.array([[0,0],[0,1]]),'ruletype':'interaction'},
-    {'name':'exceptR1', 'rule':np.array([[0,1],[1,1]]),'ruletype':'interaction'},
-    {'name':'exceptR2', 'rule':np.array([[1,0],[1,1]]),'ruletype':'interaction'},
-    {'name':'exceptR3', 'rule':np.array([[1,1],[0,1]]),'ruletype':'interaction'},
-    {'name':'exceptR4', 'rule':np.array([[1,1],[1,0]]),'ruletype':'interaction'}
+    {'name':'none', 'rule':np.array([[0,0],[1,1]]), 'ruletype':'none'},
+    {'name':'reverse', 'rule':np.array([[1,1],[0,0]]), 'ruletype':'state'},
+    {'name':'forceA', 'rule':np.array([[1,0],[1,0]]),'ruletype':'input'},
+    {'name':'forceB', 'rule':np.array([[0,1],[0,1]]),'ruletype':'input'},
+    {'name':'crossA', 'rule':np.array([[1,0],[0,1]]),'ruletype':'X'},
+    {'name':'crossB', 'rule':np.array([[0,1],[1,0]]),'ruletype':'X'},
+    {'name':'except1', 'rule':np.array([[1,0],[0,0]]),'ruletype':'X_assym'},
+    {'name':'except2', 'rule':np.array([[0,1],[0,0]]),'ruletype':'X_assym'},
+    {'name':'except3', 'rule':np.array([[0,0],[1,0]]),'ruletype':'X_assym'},
+    {'name':'except4', 'rule':np.array([[0,0],[0,1]]),'ruletype':'X_assym'},
+    {'name':'exceptR1', 'rule':np.array([[0,1],[1,1]]),'ruletype':'X_assym'},
+    {'name':'exceptR2', 'rule':np.array([[1,0],[1,1]]),'ruletype':'X_assym'},
+    {'name':'exceptR3', 'rule':np.array([[1,1],[0,1]]),'ruletype':'X_assym'},
+    {'name':'exceptR4', 'rule':np.array([[1,1],[1,0]]),'ruletype':'X_assym'}
 ]
 
 # Create an example assignment using the first 3 rules in the ruledict
