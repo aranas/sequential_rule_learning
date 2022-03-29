@@ -34,8 +34,9 @@ def check_submission(filename, experimentdata, parametersdata, blocked_correct):
             pause_time = (experiment_data['block_finishtime'][iblock] - start_time)/1000/60
             print('spend {0} minutes on pause {1}'.format(np.round(pause_time,decimals=2),iblock))
         print('## Debrief ##')
-        print('used a tool: ' + experimentdata['debrief_tools'])
-        print(experimentdata['debrief_feedback'])
+        debrief_fields = [x for x in experimentdata.keys() if x.startswith('debrief')]
+        for field in debrief_fields:
+            print(field + ' ' + experimentdata[field])
 
         #print out info from prolific side
         try:
@@ -62,7 +63,7 @@ def compute_bonus(responses,max_bonus):
     bonus_var = 0
     for iblock, block_data in enumerate(responses):
         acc = np.nansum(block_data)/len(block_data)
-        pay = (((acc*100)-50)/50)*(max_bonus/4)
+        pay = (((acc*100)-50)/50)*(max_bonus/5)
         bonus_var = bonus_var+pay
     return bonus_var
 
@@ -79,9 +80,12 @@ def retrieve_uniqueness_point(blocked_trialorder):
         uniqueness_point.append(itrial)
     return uniqueness_point
 
-def map_rule2ruleid(input_array):
-    rule_names = np.array(['Input', 'X', 'state'])
-    rules = np.array([[0, 0, 0, 0], [1, 1, 1, 1], [1, 2, 1, 0], [2, 1, 2, 0],[0, 2, 0, 1], [2, 0, 2, 1]])
+def map_rule2ruleid(input_array, version = '2step'):
+    rule_names = np.array(['Input', 'X', 'state','None'])
+    if version == '2step':
+        rules = np.array([[[0,1],[0,1],[0,1],[0,1],[0,1],[0,1]],[[0,3],[0,3],[1,3],[1,3],[0,1],[0,1]]])
+    else:
+        rules = np.array([[0, 0, 0, 0], [1, 1, 1, 1], [1, 2, 1, 0], [2, 1, 2, 0],[0, 2, 0, 1], [2, 0, 2, 1]])
 
     idx_rule = np.where((rules == input_array).all(axis=1))[0][0]
     name_rule = [rule_names[i] for i in input_array]
@@ -94,11 +98,11 @@ files = pth("data/prolific/demographics").rglob("*.csv")
 all_csvs = [pd.read_csv(file) for file in files]
 all_csvs = pd.concat(all_csvs)
 
+# check if anyone participated multiple times across experiments
 if not len(np.unique(all_csvs['participant_id'].values)) ==len(all_csvs['participant_id'].values):
     print('### WARNING DOUBLE PARTICIPANT ###')
 
-# check if anyone participated multiple times across experiments
-DATA_DIR = "data/prolific/data"
+DATA_DIR = "data/prolific/data/2step_long"
 all_dates = []
 all_files = []
 all_rules = []
@@ -123,6 +127,7 @@ groups = []
 all_names = []
 all_bonus = []
 condition = df_files['date&time'].str.startswith('2022-03-04')
+n_testblock = 0
 for file_name in df_files['filename'].values:
     f = os.path.join(DATA_DIR, file_name)
     data = retrieve_data(f)
@@ -132,8 +137,11 @@ for file_name in df_files['filename'].values:
     parameters_data = data[2]['parameters']
 
     # preprocess
-    nblock = parameters_data['nb_blocks']
-    all_correct = trial_data['resp_correct'][1:]
+    nblock = parameters_data['nb_blocks']-n_testblock
+    if n_testblock is 1 :
+        all_correct = trial_data['resp_correct'][1:-8]
+    else:
+        all_correct = trial_data['resp_correct'][1:]
     # for now ignore timeouts
     all_correct = pd.DataFrame(np.array(all_correct)).fillna(0).to_numpy().flatten()
     blocked_correct = np.array_split(all_correct, nblock)
@@ -173,16 +181,41 @@ for file_name in df_files['filename'].values:
 
     groups.append(parameters_data['ruleid'])
     all_names.append(experiment_data['expt_turker'])
-    all_bonus.append(compute_bonus(blocked_correct, 1))
+    all_bonus.append(compute_bonus(blocked_correct, 3))
 
-groups
 bonus_sheet = pd.DataFrame({'id':all_names, 'pay':all_bonus})
 bonus_sheet.to_csv('bonus.csv')
 
 #%%
+# Visualize 1-step test block without feedback
+for file_name in df_files['filename'].values:
+    f = os.path.join(DATA_DIR, file_name)
+    data = retrieve_data(f)
 
-## Analysis pipeline
-df_data = pd.DataFrame(columns=['i_subject','group', 'curriculum', 'block_num', 'rule','acc','num_reps','mean_RT','lucky_guess','second_trial'])
+    trial_data  = data[0]['sdata']
+    parameters_data = data[2]['parameters']
+    n_testtrials = len(parameters_data['ruleid'][-1])
+    rule_hat    = np.array(trial_data['resp_category'][-n_testtrials*4:])
+    rule        = np.array(trial_data['target_response'][-n_testtrials*4:])
+
+    plt.figure()
+    # state-input order per trial, rules are blocked: 0-0, 0-1, 1-0, 1-1
+    plt.subplot(2,2,1)
+    plt.imshow(rule[0:4].reshape(2,2))
+    plt.subplot(2,2,2)
+    plt.imshow(rule[4:8].reshape(2,2))
+    plt.subplot(2,2,3)
+    plt.imshow(rule_hat[0:4].reshape(2,2))
+    plt.subplot(2,2,4)
+    plt.imshow(rule_hat[4:8].reshape(2,2))
+
+#%%
+
+## Group Analysis pipeline
+df_data = pd.DataFrame(columns=['i_subject','group', 'curriculum',
+                                 'block_num', 'rule','acc','acc_rest',
+                                'num_reps','mean_RT','lucky_guess','second_trial'])
+incorrect_per_trial = np.zeros((160,1)).flatten()
 for isub, file_name in enumerate(df_files['filename'].values):
     f = os.path.join(DATA_DIR, file_name)
     data = retrieve_data(f)
@@ -195,6 +228,7 @@ for isub, file_name in enumerate(df_files['filename'].values):
     ruleid, rulename = map_rule2ruleid(parameters_data['ruleid'])
 
     all_correct = trial_data['resp_correct'][1:]
+
     blocked_correct = np.array_split(all_correct, nblock)
     blocked_rt      = np.array_split(trial_data['resp_reactiontime'][1:], nblock)
 
@@ -204,7 +238,9 @@ for isub, file_name in enumerate(df_files['filename'].values):
     count_rep_blocked = []
     lucky_guess = []
     second_trial = []
+    acc_rest = []
     for iblock, block_data in enumerate(blocked_correct):
+
         #num of repeating adjacent trials
         trialorder = parameters_data['block']['trialorder'][iblock]
         count_rep = 0
@@ -214,9 +250,14 @@ for isub, file_name in enumerate(df_files['filename'].values):
         count_rep_blocked.append(count_rep)
         #FIXME: maybe rather want to treat timeouts as incorrect?
         acc_blocked.append(pd.Series(block_data).mean())
+        acc_rest.append(pd.Series(block_data[1:]).mean())
         rt_blocked.append(pd.Series(blocked_rt[iblock]).mean())
         lucky_guess.append(block_data[0])
-        second_trial.append(block_data[1])
+        if trialorder[0] == trialorder[1]:
+            print('yep')
+            second_trial.append(block_data[2])
+        else:
+            second_trial.append(block_data[1])
 
     num_timeouts = len([i for i in range(len(trial_data['resp_reactiontime'])) if trial_data['resp_reactiontime'][i] == None])
     if num_timeouts > 4:
@@ -229,6 +270,11 @@ for isub, file_name in enumerate(df_files['filename'].values):
         print('exclude subject {0}from group {1}'.format(file_name,experiment_data['expt_group']))
         print(acc_blocked)
         continue
+
+    for i,x in enumerate(all_correct):
+        if not isinstance(x, type(None)):
+            incorrect_per_trial[i] = incorrect_per_trial[i] + 1-x
+
     for iblock, block_data in enumerate(blocked_correct):
         block_name ='_'.join(['block',str(iblock)])
         row = pd.Series([
@@ -238,6 +284,7 @@ for isub, file_name in enumerate(df_files['filename'].values):
             block_name,
             parameters_data['ruleid'][iblock],
             acc_blocked[iblock],
+            acc_rest[iblock],
             count_rep_blocked[iblock],
             rt_blocked[iblock],
             lucky_guess[iblock],
@@ -248,6 +295,17 @@ for isub, file_name in enumerate(df_files['filename'].values):
 mean_acc = df_data.groupby(['block_num','group','curriculum']).agg(['mean',np.nanstd,'count'])
 df_data['second_trial'] = pd.to_numeric(df_data['second_trial'])
 two_shot = df_data.groupby(['block_num','group']).agg('sum')
+df_data.replace('block_0','1',inplace=True)
+df_data.replace('block_1','2',inplace=True)
+df_data.replace('block_2','3',inplace=True)
+df_data.replace('block_3','4',inplace=True)
+
+plt.figure()
+sns.countplot(x='block_num',hue='group',data=df_data[df_data.second_trial==1])
+plt.legend(bbox_to_anchor=(1.02, 0.55),loc='upper left',borderaxespad=0)
+plt.title('amount of correct guesses on 2nd combination')
+#g.set_xticklabels(['1','2','3','4'])
+plt.savefig('results/prolific/group/'+'second_trial_correct.jpg',bbox_inches="tight")
 
 
 #%%
@@ -260,7 +318,7 @@ df_plot['first_block'] = df_plot.curriculum.apply(lambda x: x.split('-')[1])
 df_plot.replace('X-X-X-X','X',inplace=True)
 df_plot.replace('Input-Input-Input-Input','Input',inplace=True)
 df_plot.replace('state-X-state-Input','state_Input',inplace=True)
-df_plot.replace('X-State-X-Input','X_Input',inplace=True)
+df_plot.replace('X-state-X-Input','X_Input',inplace=True)
 df_plot.replace('state-Input-state-X','state_X',inplace=True)
 df_plot.replace('Input-state-Input-X','Input_X',inplace=True)
 df_plot['rule'].replace('0','Input',inplace=True)
@@ -268,19 +326,45 @@ df_plot['rule'].replace('1','X',inplace=True)
 df_plot['rule'].replace('2','State',inplace=True)
 df_plot['acc_corrected'] = df_plot['acc'] - 0.025*df_plot['num_reps']
 
-#plt.hist(df_data[df_data['group']=='generalise']['acc'])
-#plt.hist(df_data[df_data['group']=='control']['acc'])
+incorrect_per_trial = np.array_split(incorrect_per_trial, nblock)
+for iblock in list(range(nblock)):
+    counts = incorrect_per_trial[iblock]
+    plt.bar(list(range(len(counts))),counts,alpha = 0.5)
+plt.legend(['block 1', 'block 2','block 3','block 4'])
+plt.xlabel('trial number')
+plt.ylabel('# errors')
+plt.savefig('results/prolific/group/'+'hist_errors_per_trial.jpg',bbox_inches="tight")
 
+plt.hist(df_data[(df_data.group=='generalise') & (df_data.block_num=='block_3')]['acc'],alpha=0.5)
+plt.hist(df_data[(df_data.group=='control') & (df_data.block_num=='block_3')]['acc'],alpha=0.5)
+plt.legend(['generalise','control'])
+plt.xlabel('accuracy')
+plt.ylabel('count')
+plt.savefig('results/prolific/group/'+'hist_acc_final.jpg',bbox_inches="tight")
+
+plt.hist(df_data[(df_data.group=='generalise')]['acc'],alpha=0.5)
+plt.hist(df_data[(df_data.group=='control')]['acc'],alpha=0.5)
+plt.legend(['generalise','control'])
+plt.xlabel('accuracy')
+plt.ylabel('count')
+plt.savefig('results/prolific/group/'+'hist_acc_all.jpg',bbox_inches="tight")
+
+plt.hist(df_data[(df_data.group=='generalise')]['acc'],alpha=0.5)
+plt.hist(df_data[(df_data.group=='control')]['acc'],alpha=0.5)
+plt.legend(['generalise','control'])
+plt.xlabel('accuracy')
+plt.ylabel('count')
+plt.savefig('results/prolific/group/'+'hist_acc_all.jpg',bbox_inches="tight")
 
 plt.figure()
-g = sns.lineplot(x='block_num',y='acc', hue='group',data=df_plot, err_style='bars', marker='o')
+g = sns.lineplot(x='block_num',y='acc', hue='group',data=df_plot, err_style='bars', err_kws={'capsize':6}, marker='o')
 plt.legend(bbox_to_anchor=(1.02, 0.55),loc='upper left',borderaxespad=0)
 plt.title('main effect accuracy learning')
 g.set_xticklabels(['1','2','3','4'])
 plt.savefig('results/prolific/group/'+'main_acc.jpg',bbox_inches="tight")
 
 plt.figure()
-g=sns.lineplot(x='block_num',y='acc_corrected', hue='group',data=df_plot, err_style='bars', marker='o')
+g=sns.lineplot(x='block_num',y='acc_corrected', hue='group',data=df_plot, err_style='bars', err_kws={'capsize':6}, marker='o')
 plt.legend(bbox_to_anchor=(1.02, 0.55),loc='upper left',borderaxespad=0)
 plt.title('main effect accuracy - corrected for reps')
 g.set_xticklabels(['1','2','3','4'])
@@ -288,7 +372,7 @@ plt.savefig('results/prolific/group/'+'main_acc_noreps.jpg',bbox_inches="tight")
 
 
 plt.figure()
-g=sns.lineplot(x='block_num',y='mean_RT', hue='group',data=df_plot, err_style='bars', marker='o')
+g=sns.lineplot(x='block_num',y='mean_RT', hue='group',data=df_plot, err_style='bars', err_kws={'capsize':6}, marker='o')
 plt.legend(bbox_to_anchor=(1.02, 0.55),loc='upper left',borderaxespad=0)
 plt.title('main effect RTs - corrected for reps')
 g.set_xticklabels(['1','2','3','4'])
@@ -296,22 +380,22 @@ plt.savefig('results/prolific/group/'+'main_RT_noreps.jpg',bbox_inches="tight")
 
 
 plt.figure()
-g=sns.lineplot(x='block_num',y='acc', style='last_block', hue='group',data=df_plot, err_style='bars', marker='o')
+g=sns.lineplot(x='block_num',y='acc', style='last_block', hue='group',data=df_plot, err_style='bars', err_kws={'capsize':6}, marker='o')
 plt.legend(bbox_to_anchor=(1.02, 0.55),loc='upper left',borderaxespad=0)
 plt.title('detailed effects acc')
 g.set_xticklabels(['1','2','3','4'])
 plt.savefig('results/prolific/group/'+'main_acc_detailed.jpg',bbox_inches="tight")
 
 plt.figure()
-g=sns.lineplot(x='block_num',y='acc', style='rule', hue='group',data=df_plot, err_style='bars', marker='o')
+g=sns.lineplot(x='block_num',y='acc', style='curriculum', data=df_plot[df_plot['group']=='control'], err_style='bars', err_kws={'capsize':6}, marker='o')
 plt.legend(bbox_to_anchor=(1.02, 0.55),loc='upper left',borderaxespad=0)
-plt.title('detailed effects acc')
+plt.title('Control group only - ACC')
 g.set_xticklabels(['1','2','3','4'])
 plt.savefig('results/prolific/group/'+'main_acc_detailed2.jpg',bbox_inches="tight")
 
 
 plt.figure()
-g=sns.lineplot(x='block_num',y='acc_corrected', style='last_block', hue='group',data=df_plot, err_style='bars', marker='o')
+g=sns.lineplot(x='block_num',y='acc_corrected', style='last_block', hue='group',data=df_plot, err_style='bars', err_kws={'capsize':6}, marker='o')
 plt.legend(bbox_to_anchor=(1.02, 0.55),loc='upper left',borderaxespad=0)
 plt.title('detailed effects acc - corrected')
 g.set_xticklabels(['1','2','3','4'])
@@ -321,14 +405,16 @@ plt.savefig('results/prolific/group/'+'main_acc_detailed_corrected.jpg',bbox_inc
 plt.figure()
 sns.stripplot(x='first_block',y='acc',data=df_plot[df_plot['block_num']=='block_0'],jitter=True)
 plt.title('rule difficulty in 1st block')
+plt.savefig('results/prolific/group/'+'rule_difficulty.jpg',bbox_inches="tight")
+
 plt.figure()
 sns.stripplot(x='first_block',y='acc_corrected',data=df_plot[df_plot['block_num']=='block_0'],jitter=True)
 plt.title('rule difficulty in 1st block - corrected for reps')
 plt.savefig('results/prolific/group/'+'rule_difficulty_corrected.jpg',bbox_inches="tight")
 
 plt.figure()
-g=sns.lineplot(x='block_num',y='acc',  style='lucky_guess',data=df_plot, err_style='bars', marker='o')
-plt.legend(bbox_to_anchor=(1.02, 0.55),loc='upper left',borderaxespad=0)
+g=sns.lineplot(x='block_num',y='acc_rest',  hue='lucky_guess',data=df_plot, err_style='bars', err_kws={'capsize':6}, marker='o')
+plt.legend(['1st incorrect','1st correct'],bbox_to_anchor=(1.02, 0.55),loc='upper left',borderaxespad=0)
 plt.title('main effect accuracy - divided by success on first trial')
 g.set_xticklabels(['1','2','3','4'])
 plt.savefig('results/prolific/group/'+'split_firsttrial.jpg',bbox_inches="tight")
@@ -342,10 +428,10 @@ import itertools
 # create an empty dictionary
 test_results = {}
 
-group1 = df_data.where((df_data.group == 'generalise') & (df_data.block_num == 'block_3')).dropna()
-group2 = df_data.where((df_data.group== 'control') & (df_data.block_num == 'block_3')).dropna()
+group1 = df_data.where((df_data.group == 'generalise') & (df_data.block_num == 'block_2')).dropna()
+group2 = df_data.where((df_data.group== 'control') & (df_data.block_num == 'block_2')).dropna()
 # add the output to the dictionary
-test_results['main'] = mannwhitneyu(group1['acc'],group2['acc'])
+test_results['main'] = mannwhitneyu(group1['acc_corrected'],group2['acc_corrected'])
 f_oneway(group1['acc'].values,group2['acc'].values)
 
 group1 = df_data.where((df_data.lucky_guess == 0) & (df_data.block_num != 'block_2')).dropna()
