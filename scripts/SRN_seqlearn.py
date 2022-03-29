@@ -1,13 +1,14 @@
 # %%
 # First attempt to train Elman RNN on sequential rule task,
 # where the task is to predict the value of a binary output state, given an initial state and sequentially appearing input-operator pairs
+import random
+import time
 import sys
-sys.path.append('/Users/sophiearana/Documents/Work/Projects/SeqLearning/code')
+sys.path.append('/Users/sophiearana/Documents/Work/Projects/SeqLearning/Analysis/scripts')
+import scripts.seqlearn_magicspell as magic
+
 import numpy as np
 import pandas as pd
-import random
-import seqlearn_magicspell as magic
-import time
 import pickle
 import copy
 
@@ -41,7 +42,6 @@ class SeqData(Dataset):
         return sequence, out_state
 
 def convert_seq2onehot(seq,n_ops,n_inputs):
-
     data = []
     for trial in seq:
         trial_data = []
@@ -81,14 +81,13 @@ def convert_onehot2seq(seq,n_ops,n_inputs):
     return new_seq
 
 def generate_data(example_obs,input_ids,len_seq,train_split):
-
     example_rules = np.stack([magic.dRules[i]['rule'] for i in example_obs])
     n_ops = len(example_obs)
 
     ### Create input stimuli & convert to 1-hot ###
     seq = magic.generate_trial(example_obs,input_ids,len_seq, replacement=True)
     out = magic.transform(seq,magic.dRules)
-    inputvec = convert_seq2onehot(seq,6,4)
+    inputvec = convert_seq2onehot(seq,6,8)
 
     ### Create train-test split ###
     seqdata = SeqData(inputvec, out, len_seq)
@@ -155,7 +154,7 @@ def run(len_seq,example_obs):
     #example_obs = [0,1]
     # define model & training parameters
     len_inputvec = 2+4+6
-    batchSize = 1
+    batch_size = 1
     recurrentSize = 4
     hiddenSize = 6
     learningRate = 0.001
@@ -164,21 +163,21 @@ def run(len_seq,example_obs):
 
     #hardcoded: assume
     dattrain, dattest = generate_data(example_obs,[0,1],len_seq,0.8)
-    trainloader = DataLoader(dattrain, batch_size=batchSize, shuffle=True)
-    testloader = DataLoader(dattest, batch_size=batchSize, shuffle=True)
+    trainloader = DataLoader(dattrain, batch_size=batch_size, shuffle=True)
+    testloader = DataLoader(dattest, batch_size=batch_size, shuffle=True)
 
     model = OneStepRNN(len_inputvec,1,recurrentSize, hiddenSize)
 
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=learningRate)
 
-# viz
-#for x,y in trainloader:
-#    break
-#writer = SummaryWriter('runs/seq_learntest')
-#hState = torch.zeros(1,recurrentSize)[0]
-#writer.add_graph(model,(x[0][0],hState))
-#writer.close()
+    # viz
+    #for x,y in trainloader:
+    #      break
+    #writer = SummaryWriter('runs/seq_learntest')
+    #hState = torch.zeros(1,recurrentSize)[0]
+    #writer.add_graph(model,(x[0][0],hState))
+    #writer.close()
 
     model.train()
     lossHistory = []
@@ -209,7 +208,7 @@ def run(len_seq,example_obs):
 def train_generalise(len_seq,ops1,ops2,ops3,nseed):
         # define model & training parameters
         len_inputvec = 2+4+6 #binary input state, 4 input cues, 6 possible operators
-        batchSize = 1
+        batch_size = 1
         recurrentSize = 4
         hiddenSize = 6
         learningRate = 0.001
@@ -229,10 +228,10 @@ def train_generalise(len_seq,ops1,ops2,ops3,nseed):
 
         #dattrain = torch.utils.data.ConcatDataset([dattrain1,dattrain2])
 
-        trainloader1 = DataLoader(dattrain1, batch_size=batchSize, shuffle=True)
-        trainloader2 = DataLoader(dattrain2, batch_size=batchSize, shuffle=True)
-        testloader = DataLoader(dattest, batch_size=batchSize, shuffle=True)
-        testloader2 = DataLoader(dattest2, batch_size=batchSize, shuffle=True)
+        trainloader1 = DataLoader(dattrain1, batch_size=batch_size, shuffle=True)
+        trainloader2 = DataLoader(dattrain2, batch_size=batch_size, shuffle=True)
+        testloader = DataLoader(dattest, batch_size=batch_size, shuffle=True)
+        testloader2 = DataLoader(dattest2, batch_size=batch_size, shuffle=True)
     # viz
     #for x,y in trainloader:
     #    break
@@ -375,40 +374,167 @@ def run_generalise_2step(pair1,pair2,pair3,pair4):
     plt.savefig('../figures/lossgeneral_{0}_{1}_{2}.jpg'.format(pair1,pair2,pair3))
     print("figure saved under ../figures/lossgeneral_{0}_{1}_{2}.jpg".format(pair1,pair2,pair3))
 
+def simulate_pilot1():
+    # define model & training parameters
+    nseed = 11
+    len_inputvec = 2+8+6 #binary input state, 4 input cues, 6 possible operators
+    batch_size = 1
+    recurrentSize = 4
+    hiddenSize = 6
+    learningRate = 0.001
+    epochs = 1000
+    inputs = [[0, 1], [2, 3], [4, 5], [6, 7]]
+    rules = [[2, 2, 2, 2],
+             [4, 4, 4, 4],
+             [1, 4, 1, 2],
+             [4, 1, 4, 2],
+             [1, 2, 1, 4],
+             [2, 1, 2, 4]]
+
+    for i_group in range(len(rules)):
+
+        rulenames = [magic.dRules[i]['name'] for i in rules[i_group]]
+
+        criterion = nn.CrossEntropyLoss()
+        #print('create training data')
+        trainloader = [None] * len(rules)
+        for iblock, rule in enumerate(rules[i_group]):
+            dattrain, _ = generate_data([rule], inputs[iblock], 1, 1)
+            trainloader[iblock] = DataLoader(dattrain, batch_size=batch_size, shuffle=True)
+
+        losses = []
+        for i in range(50):
+            print("random init # {0}".format(i))
+            random.seed(i)
+            model = OneStepRNN(len_inputvec, 1, recurrentSize, hiddenSize)
+
+            model.train()
+            optimizer = torch.optim.Adam(model.parameters(), lr=learningRate)
+            # train on rule 1 given inputs A & B
+
+            loss_history = []
+            for iblock, rule in enumerate(rules[i_group]):
+                loss_per_epoch = []
+                for epoch in range(epochs):
+                    loss_total = 0
+                    for in_seq, out in trainloader[iblock]:
+                        _, loss = train(in_seq, out, model, optimizer, criterion)
+                        loss_total += loss
+                    loss_per_epoch.append(loss_total)
+                loss_history.append(loss_per_epoch)
+            losses.append(loss_history)
+
+        #model.eval()
+        #correct = 0
+        #for x,y in testloader:
+        #    hidden = torch.zeros(1, recurrentSize)[0]
+        #    for step in x[0]:
+        #        hidden,h_activation,y_hat = model.get_activations(step,hidden)
+        #    correct += int(y.detach().numpy()==np.where(y_hat==y_hat.max()))
+            #print(y, y_hat)
+        #print('accuracy: %f ' % ((correct/len(testloader))))
+
+        losses = np.array(losses)
+        nshuf, nblock, nepoch = losses.shape
+
+        plt.figure()
+        for i in range(nblock):
+            df = pd.DataFrame(losses[:, i, :]).melt()
+            sns.lineplot(x="variable", y="value", data=df)
+        legend_labels = [''.join([x, rulenames[i]]) for i, x in enumerate(['B1_', 'B2_', 'B3_', 'B4_'])]
+        plt.legend(labels=legend_labels)
+                    #plt.ylim([0,8])
+        plt.xlabel('training epochs')
+        plt.ylabel('training loss')
+        plt.title('group {0}'.format(i_group))
+        plt.savefig('results/rnn_training/prolific_sim/'+'group_{0}.jpg'.format(i_group),bbox_inches="tight")
+        plt.ylim([0,8])
+        plt.savefig('results/rnn_training/prolific_sim/'+'group_{0}_closeup.jpg'.format(i_group),bbox_inches="tight")
+
+def simulate_pilot_ss():
+    # define model & training parameters
+    nseed = 11
+    len_inputvec = 2+8+6 #binary input state, 4 input cues, 6 possible operators
+    batch_size = 1
+    recurrentSize = 4
+    hiddenSize = 6
+    learningRate = 0.001
+    epochs = 1000
+    inputs = [[0, 1], [2, 3], [4, 5], [6, 7]]
+    rules = [[[2, 4], [2, 4], [2, 4], [2, 4]],
+            [[2, 0],[4, 0], [2, 4], [2, 4]]]
+
+
+    for i_group in range(len(rules)):
+
+        criterion = nn.CrossEntropyLoss()
+        #print('create training data')
+        trainloader = [None] * len(rules[0])
+        for iblock, rule in enumerate(rules[i_group]):
+            dattrain, _ = generate_data(rule, inputs[iblock], 2, 1)
+            trainloader[iblock] = DataLoader(dattrain, batch_size=batch_size, shuffle=True)
+
+        losses = []
+        for i in range(50):
+            print("random init # {0}".format(i))
+            random.seed(i)
+            model = OneStepRNN(len_inputvec, 1, recurrentSize, hiddenSize)
+
+            model.train()
+            optimizer = torch.optim.Adam(model.parameters(), lr=learningRate)
+            # train on rule 1 given inputs A & B
+
+            loss_history = []
+            for iblock, rule in enumerate(rules[i_group]):
+                loss_per_epoch = []
+                for epoch in range(epochs):
+                    loss_total = 0
+                    for in_seq, out in trainloader[iblock]:
+                        _, loss = train(in_seq, out, model, optimizer, criterion)
+                        loss_total += loss
+                    loss_per_epoch.append(loss_total)
+                loss_history.append(loss_per_epoch)
+            losses.append(loss_history)
+
+        model.eval()
+        correct = 0
+        for x,y in trainloader[3]:
+            hidden = torch.zeros(1, recurrentSize)[0]
+            for step in x[0]:
+                hidden,h_activation,y_hat = model.get_activations(step,hidden)
+            correct += int(y.detach().numpy()==np.where(y_hat==y_hat.max()))
+            #print(y, y_hat)
+        print('accuracy: %f ' % ((correct/len(trainloader[3]))))
+        with open('results/rnn_training/loss_ss_{0}.txt'.format(i_group),"wb") as fp:
+            pickle.dump(losses, fp)
+
+rules = [[[2, 4], [2, 4], [2, 4]],
+            [[2, 0],[4, 0],[2, 4]]]
+for i_group in range(len(rules)):
+    with open('results/rnn_training/loss_ss_{0}.txt'.format(i_group), 'rb') as f:
+        losses = pickle.load(f)
+        losses = np.array(losses)
+    nshuf, nblock, nepoch = losses.shape
+    plt.figure()
+    rulenames = []
+    for i_block in range(nblock-1):
+        name = '_'.join([magic.dRules[i]['ruletype'] for i in rules[i_group][i_block]])
+        print(name)
+        rulenames.append(name)
+        df = pd.DataFrame(losses[:, i_block, :]).melt()
+        sns.lineplot(x="variable", y="value", data=df)
+    legend_labels = [''.join([x, rulenames[i]]) for i, x in enumerate(['B1_', 'B2_', 'B3_'])]
+    plt.legend(labels=legend_labels)
+    plt.xlabel('training epochs')
+    plt.ylabel('training loss')
+    plt.title('group {0}'.format(i_group))
+    plt.ylim([0,30])
+    plt.savefig('results/rnn_training/'+'ss_group_{0}.jpg'.format(i_group),bbox_inches="tight")
+
+
+
 #%%
 
 if __name__ == '__main__':
 
-    #"Force A" & "Reverse", control: "Force B"
-    #ops1,ops2,ops3 = 2,1,3
-    #run_generalise_1step(ops1,ops2,ops3)
-    #"Force A" & "None"
-    #ops1,ops2,ops3 = 2,0,3
-    #run_generalise_1step(ops1,ops2,ops3)
-    #"cross A" & "force A" control: "Cross B"
-    #ops1,ops2,ops3 = 4,2,5
-    #run_generalise_1step(ops1,ops2,ops3)
-    #"force A" & "Cross A" control: "Force B"
-    #ops1,ops2,ops3 = 2,4,3
-    #run_generalise_1step(ops1,ops2,ops3)
-    #Cross A & Force A - Force B & Reverse, test: Cross B
-    pair1,pair2,pair3,pair4 = (4,2),(1,3),(4,3),(5,3)
-    run_generalise_2step(pair1,pair2,pair3,pair4)
-
-with open('../results/lossgeneral_{0}_{1}_{2}.txt'.format(pair1,pair2,pair3),"rb") as fp:
-    losses = pickle.load(fp)
-
-nepoch,nblock,nshuf = losses.shape
-rulenames = [magic.dRules[i]['name'] for i in [pair1[0],pair1[1],pair2[0],pair2[1],pair3[0],pair3[1],pair4[0],pair4[1]]]
-legendtxt = ['Task 1 - {0}&{1}'.format(rulenames[0],rulenames[1]),'Task 2 - {0}&{1}'.format(rulenames[2],rulenames[3]),'Task 3 - generalise {0}&{1}'.format(rulenames[4],rulenames[5]),'Task 3 - control {0}&{1}'.format(rulenames[6],rulenames[7]), 'Task 3 - control interference']
-
-plt.figure()
-for i in range(nblock):
-    df = pd.DataFrame(np.transpose(losses[:,i,:],[1,0])).melt()
-    sns.lineplot(x="variable", y="value", data=df)
-plt.legend(labels=legendtxt)
-plt.xlabel('training epochs')
-plt.ylabel('training loss')
-plt.ylim([0,50])
-plt.savefig('../figures/lossgeneral_{0}_{1}_{2}.jpg'.format(pair1,pair2,pair3))
-print("figure saved under ../figures/lossgeneral_{0}_{1}_{2}_{3}.jpg".format(pair1,pair2,pair3,pair4))
+    simulate_pilot_ss()
