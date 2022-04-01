@@ -52,7 +52,7 @@ def compute_bonus(responses, max_bonus):
     acc = np.nansum(responses)/len(responses)
     bonus_var = (((acc*100)-50)/50)*max_bonus
 
-    return bonus_var
+    return acc,bonus_var
 
 # find which trial was known based on generalised data.
 def retrieve_uniqueness_point(seq_id):
@@ -198,19 +198,21 @@ def fetch_data(path_to_data, list_of_filenames):
 
     return df_out
 
-#%%
+#%% GET ALL DATA INTO DATAFRAME
 path_data = "data/prolific/data/2step_v1"
 path_demographic = "data/prolific/demographics"
+path_results = 'results/prolific/2step_v1/'
 
 df_subject = fetch_demographics(path_demographic, path_data)
 df_data = fetch_data(path_data, df_subject['filename'].values)
 
-#compute accuracy
+# Quick accuracy overview
 df_acc = df_data[['i_subject', 'block_num', 'correct']].groupby(['i_subject', 'block_num']).agg(['sum', 'count'])
 df_acc.columns = ['_'.join(column) for column in df_acc.columns]
 df_acc['acc'] = df_acc['correct_sum']/df_acc['correct_count']
 df_acc = df_acc['acc'].unstack()
-filename = 'ZySjMhKVBPgI.txt'
+
+# First pass, quick stats for each submission, quality check
 for filename in  df_subject['filename'].values:
     start_date = df_subject[df_subject['filename'] == filename]['started_datetime']
     #if not start_date.str.startswith('2022-03-30').values[0]:
@@ -222,23 +224,47 @@ for filename in  df_subject['filename'].values:
     for iblock in range(len(df_acc.columns)):
         print(np.round(df_acc[iblock][filename], decimals=2))
 
+# Compute bonus
+for file_name in df_subject['filename'].values:
+    path_file = os.path.join(path_data, file_name)
+    prolific_id = df_subject[df_subject['filename'] == file_name]['participant_id']
+    single_data = df_data[df_data['i_subject'] == file_name]
+    test_block_id = max(single_data['block_num'])
+    n_blocks = len(set(single_data['block_num']))-1
+
+    total_bonus = 0
+    for i_block in set(single_data['block_num']):
+        if i_block == test_block_id:
+            continue
+        response_correct =  single_data[single_data['block_num'] == i_block]['correct']
+        _, bonus = compute_bonus([0 if i is None else i for i in response_correct], 3/n_blocks)
+        if bonus > 0:
+            total_bonus = total_bonus+bonus
+
+    print(prolific_id)
+    print(file_name)
+    print(total_bonus)
+
 #%% Visualize trial order, why did some people learn so well?
-plt.figure(figsize=(30, 10))
+all_reps = []
 for filename in  df_subject['filename'].values:
+    print(filename)
     dt_tmp = df_data[df_data['i_subject']==filename]
-    acc = dt_tmp[dt_tmp['block_num']==2]['correct'].mean()
-    if acc > 0.6:
-        mycolor = 'r'
-    else: mycolor = 'k'
+
     f = os.path.join(path_data, filename)
     [_, _, parameters_data] = retrieve_data(f, ['sdata','edata','parameters'])
-    trials = parameters_data['block']['trialorder']
-    trials_arr = list(range(len(trials)))
-    plt.plot(trials_arr, trials,lw=2,color=mycolor)
-    plt.title(filename)
 
-#%% First pass, output info for each participant, this is to quickly check whether data quality is okay
+    count_rep_blocked = []
+    for trials in parameters_data['block']['trialorder']:
+        count_rep = 0
+        for idx, seq_num in enumerate(trials[:-1]):
+            if seq_num == trials[idx+1]:
+                count_rep += 1
+        count_rep_blocked.append(count_rep)
+    print(count_rep_blocked)
+    all_reps.append(count_rep_blocked)
 
+#%% Plot data per participant
 for file_name in df_subject['filename'].values:
     path_file = os.path.join(path_data, file_name)
 
@@ -278,25 +304,19 @@ for file_name in df_subject['filename'].values:
         plt.vlines(idx_incorrect, y_min, y_max, 'k')
         plt.vlines(idx_timeouts, y_min, y_max, 'r')
         plt.vlines(idx_unique, y_min, y_max, 'b')
-
         plt.ylim(y_min,y_max)
+
     fig.legend(['reaction time', 'incorrect trials', 'time_out', 'uniqueness point'], loc='lower center')
     fig.suptitle('subject {0} - group {1}'.format(set(single_data['i_subject']), set(single_data['group'])))
     plt.subplots_adjust(left=0.1, right=0.9, bottom=0.1, top=0.9)
-    plt.savefig('results/prolific/2step_short/'+'summaryfig_' + file_name[:-4] + '.jpg')
-
-
-#bonus_sheet = pd.DataFrame({'id':all_names, 'pay':all_bonus})
-#bonus_sheet.to_csv('bonus.csv')
+    plt.savefig(path_results +'summaryfig_' + file_name[:-4] + '.jpg')
 
 #%%
-# Visualize 1-step test block without feedback
-for file_name in df_out['filename'].values:
-    f = os.path.join(DATA_DIR, file_name)
-    data = retrieve_data(f)
+# Visualize inferred rules (from test block no feedback)
+for file_name in df_subject['filename'].values:
+    path_file = os.path.join(path_data, file_name)
+    [_, e_data, p_data] = retrieve_data(path_file, ['sdata', 'edata', 'parameters'])
 
-    trial_data  = data[0]['sdata']
-    parameters_data = data[2]['parameters']
     n_testtrials = len(parameters_data['ruleid'][-1])
     print(n_testtrials)
     rule_hat    = np.array(trial_data['resp_category'][-n_testtrials*4:])
