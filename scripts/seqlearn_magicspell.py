@@ -32,7 +32,7 @@ dRules = [
 
 # Create an example assignment using the first 3 rules in the ruledict
 
-def generate_trial(operators,input_ids,len_seq,replacement=False):
+def generate_trial(operators, input_ids, len_seq, replacement=False, for_js_script=False):
     # This function defines all possible permutations of init state & sequence of binary input cues and operators.
     # Output is an array of shape n X len_seq+1.
     # Each row is one of n unique ordered permutations.
@@ -53,34 +53,36 @@ def generate_trial(operators,input_ids,len_seq,replacement=False):
     for init in range(2):
         for cue in combi_inputcue:
             for op in combi_operators:
-                seq.append([(init,np.nan,np.nan),*zip([np.nan]*len(cue),cue,tuple(op))]) #group per time point t
-                #seq.append([init] + list(cue) + list(op))
+                if not for_js_script:
+                    seq.append([(init,np.nan,np.nan),*zip([np.nan]*len(cue), cue, tuple(op))]) #group per time point t
+                else:
+                    seq.append([[init], *zip(op, cue)])
 
     return seq
 
-def transform(trials,allRules,**kwargs):
-    true_rules = kwargs.get('true_rules',None)
-    new_rules = kwargs.get('new_rules',None)
+def transform(trials, allRules, **kwargs):
+    true_rules = kwargs.get('true_rules', None)
+    new_rules = kwargs.get('new_rules', None)
     if new_rules is not None:
-        allRules[true_rules[0]],allRules[true_rules[1]] = allRules[new_rules[0]], allRules[new_rules[1]],
+        allRules[true_rules[0]], allRules[true_rules[1]] = allRules[new_rules[0]], allRules[new_rules[1]],
 
     outputs = []
-    for itrial,trial in enumerate(trials):
+    for itrial, trial in enumerate(trials):
         #print('trial # %i' % itrial)
         #print(trial)
-        for i,x in enumerate(trial):
+        for i, x in enumerate(trial):
             if i is 0:
                 state = x[0]
                 continue
             cue = x[1]
             while cue > 1:
                 cue -= 2
-            id_operator = x[2]
+            id_operator = x[0]
 
             rule = allRules[id_operator]['rule']
-            #print('current state %i and current cue %i' %(state,cue))
+            #print('current state %i and current cue %i' %(state, cue))
             #print(rule)
-            state = rule[state,cue]
+            state = rule[state, cue]
             #print('new state %i' % state)
 
         outputs.append(state)
