@@ -1,11 +1,16 @@
 '''A collection of functions that exctract data from the raw json files
-  and save them to pandas arrays'''
+  and save them to pandas arrays or operates on the resulting dataframe'''
 
 import json
 from pathlib import Path as pth
 import os
 import numpy as np
 import pandas as pd
+
+#%%
+path_to_data = "data/prolific/data/2step_V2"
+path_to_demographic = "data/prolific/demographics"
+path_to_results = 'results/prolific/2step_V2/'
 
 #  general helper functions
 def retrieve_data(path_to_file, strlist):
@@ -77,7 +82,7 @@ def retrieve_uniqueness_point(seq_id):
 
 ## PRINT A BUNCH OF INFO TO GET A FEEL FOR HOW PARTICIPANT DID
 def output_submission_details(df, fname):
-    iloc = df_subject.index[df_subject['filename'] == fname].tolist()[0]
+    iloc = df.index[df['filename'] == fname].tolist()[0]
     #print out info from servers side
     print('Subject ID ' + df['filename'][iloc])
     print('Prolific ID ' + df['participant_id'][iloc])
@@ -86,7 +91,7 @@ def output_submission_details(df, fname):
     print('Time to finish: %.2f minutes'% np.round(df['duration'][iloc], decimals=2))
     try:
         print('Time spend on instructions: %.2f'% np.round(df['instruction_time'][iloc], decimals=2))
-    except TypeError:
+    except Exception:
         print('Time spend on instructions: unkown')
 
         #breaks taken
@@ -110,10 +115,13 @@ def fetch_demographics(path_to_demographic, path_to_data):
     files = pth(path_to_demographic).rglob("*.csv")
     all_csvs = [pd.read_csv(file) for file in files]
     all_csvs = pd.concat(all_csvs)
+    all_csvs = all_csvs[all_csvs['status'] != 'RETURNED']
 
     # check if anyone participated multiple times across experiments
     if not len(np.unique(all_csvs['participant_id'].values)) ==len(all_csvs['participant_id'].values):
         print('### WARNING REPEATED PARTICIPATION ###')
+        double_submission = set([x for x in all_csvs['participant_id'].values if all_csvs['participant_id'].values.tolist().count(x) > 1])
+        print(double_submission)
 
     df_out = pd.DataFrame(columns = all_csvs.columns)
     all_files = []
@@ -122,11 +130,12 @@ def fetch_demographics(path_to_demographic, path_to_data):
     all_instruct_time = []
     all_pause = []
     all_debrief = []
+    all_bonus = []
     for file_name in os.listdir(path_to_data):
+
         f = os.path.join(path_to_data, file_name)
         if not os.path.isfile(f):
             continue
-
         [t_data, e_data,parameters_data] = retrieve_data(f,['sdata','edata','parameters'])
 
         this_csv = all_csvs.loc[all_csvs['participant_id'] == e_data['expt_turker']]
@@ -135,6 +144,10 @@ def fetch_demographics(path_to_demographic, path_to_data):
         all_rules.append(e_data['expt_group'])
 
         #all_instruct_time.append((t_data['resp_timestamp'][1] - e_data['exp_starttime'])/1000/60)
+        try:
+            all_bonus.append(t_data['bonus'][-1])
+        except KeyError:
+            all_bonus.append('')
         all_duration.append((e_data['exp_finishtime'] - e_data['exp_starttime'])/1000/60)
         pause_time = []
         for iblock, start_time in enumerate(e_data['block_starttime']):
@@ -147,18 +160,20 @@ def fetch_demographics(path_to_demographic, path_to_data):
             tmp_debrief.append(field + ' - ' +  e_data[field])
         all_debrief.append(tmp_debrief)
 
+
     df_out['filename'] = all_files
     df_out['condition'] = all_rules
     df_out['duration'] = all_duration
     #df_out['instruction_time'] = all_instruct_time
     df_out['all_pause'] = all_pause
     df_out['debrief'] = all_debrief
+    df_out['bonus'] = all_bonus
 
     return df_out
 
 ## COLLECT BEHAVIORAL DATA
 def fetch_data(path_to_data, list_of_filenames):
-    df_out = pd.DataFrame(columns=['i_subject', 'group', 'block_num',
+    df_out = pd.DataFrame(columns=['i_subject', 'group', 'curriculum', 'block_num',
                                     'trial_num', 'rule', 'seqid', 'response',
                                     'correct', 'rt'])
 
@@ -182,9 +197,10 @@ def fetch_data(path_to_data, list_of_filenames):
             row = pd.Series([
                 file_name,
                 experiment_data['expt_group'],
+                experiment_data['expt_curriculum'],
                 iblock,
                 trial_data['expt_trial'][index],
-                parameters_data['ruleid'][iblock],
+                parameters_data['block']['ruleID'][iblock],
                 #trial_data['seq'][index],
                 parameters_data['block']['trialorder'][iblock][itrial-1],
                 trial_data['resp_category'][index],
