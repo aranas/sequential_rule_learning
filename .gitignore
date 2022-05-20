@@ -3,3 +3,5 @@
 old
 __pycache__
 data
+results
+scripts/for*
