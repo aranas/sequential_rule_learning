@@ -10,15 +10,30 @@ import src.behavior_preprocess as prep
 #%% GET ALL DATA INTO DATAFRAME
 PATH_DATA = "data/prolific/data/2step_V2"
 PATH_DEMOGRAPHIC = "data/prolific/demographics"
-PATH_RESULTS = 'results/prolific/2step_V2/'
+PATH_RESULTS = "results/prolific/2step_V2/"
 
 df_subject = prep.fetch_demographics(PATH_DEMOGRAPHIC, PATH_DATA)
-df_data = prep.fetch_data(PATH_DATA, df_subject['filename'].values)
 
+all_data = []
+for file in os.listdir(PATH_DATA):
+    PATH_TO_FILE = '/'.join([PATH_DATA, file])
+    if not PATH_TO_FILE.endswith('.txt'):
+        continue
+    #retrieve data and put into large pandas dataframe
+    data_dicts = prep.data2dict(PATH_TO_FILE)
+    all_data.append(prep.dicts2df(data_dicts))
+
+all_data = pd.concat(all_data).reset_index()
+
+#extract correct/incorrect per participant & block
+col_group = ['edata-expt_turker', 'sdata-expt_block', 'sdata-expt_index']
+np_acc = prep.pd2np(all_data, col_group)
+
+##############################################
 # Quick accuracy overview
-df_acc = df_data[['i_subject', 'block_num', 'correct']].groupby(['i_subject', 'block_num']).agg(['sum', 'count'])
+df_acc = all_data[['edata-expt_turker', 'sdata-expt_block', 'sdata-resp_correct']].groupby(['edata-expt_turker', 'sdata-expt_block']).agg(['sum', 'count'])
 df_acc.columns = ['_'.join(column) for column in df_acc.columns]
-df_acc['acc'] = df_acc['correct_sum']/df_acc['correct_count']
+df_acc['acc'] = df_acc['sdata-resp_correct_sum']/df_acc['sdata-resp_correct_count']
 df_acc = df_acc['acc'].unstack()
 
 # First pass, quick stats for each submission, quality check

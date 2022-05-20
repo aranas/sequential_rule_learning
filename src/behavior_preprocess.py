@@ -1,4 +1,4 @@
-'''A collection of functions that exctract data from the raw json files
+'''A collection of functions that extract data from the raw json files
   and save them to pandas arrays or operates on the resulting dataframe'''
 
 import json
@@ -13,30 +13,42 @@ path_to_demographic = "data/prolific/demographics"
 path_to_results = 'results/prolific/2step_V2/'
 
 #  general helper functions
-def retrieve_data(path_to_file, strlist):
+def data2dict(file_path):
     """ Load in data saved from javascript online study
-        Deals with missing '{}' and separates out saved keys
-        into variables
+        Deals with missing '{}' and outputs data in the form of dicts.
 
     Parameters:
         path_to_file (str) : full path to file that contains data
-        strlist (list) : list of strings with dict names to extract from files
 
     Returns:
         out (list) : list of dicts from file
 
     """
-
-    out = []
-    data_read = []
-    with open(path_to_file, "r") as file:
+    with open(file_path, "r") as file:
         data_read = file.read().split('\n')
-    data_read = [json.loads('{' + line + '}') for line in data_read]
-
-    for i_dict, keyword in enumerate(strlist):
-        out.append(data_read[i_dict][keyword])
+    out = [json.loads('{' + line + '}') for line in data_read]
 
     return out
+
+def dicts2df(list_of_dicts):
+
+    all_dfs = []
+    for mylist in list_of_dicts:
+        df_tmp = pd.json_normalize(mylist, sep='-')
+        all_dfs.append(df_tmp)
+    df_data_1row = pd.concat(all_dfs, axis=1)
+
+    #get column names that carry trial information (i.e. contain vector of max length)
+    col_length = df_data_1row.apply(lambda col: len(np.array(col[0]).flatten()), axis=0)
+    col_trl = col_length[col_length == max(col_length)].index.tolist()
+
+    #unrol trial information
+    df_data = df_data_1row[col_trl + ['edata-expt_turker']].set_index(['edata-expt_turker']).apply(pd.Series.explode).reset_index()
+    #add non trl data
+    df_repeat = df_data_1row.loc[:, ~df_data_1row.columns.isin(col_trl)]
+    df_data.merge(df_repeat)
+
+    return df_data
 
 # compute accuracy per block
 def compute_bonus(responses, max_bonus):
@@ -118,96 +130,20 @@ def fetch_demographics(path_to_demographic, path_to_data):
     all_csvs = all_csvs[all_csvs['status'] != 'RETURNED']
 
     # check if anyone participated multiple times across experiments
-    if not len(np.unique(all_csvs['participant_id'].values)) ==len(all_csvs['participant_id'].values):
+    pp_ids = all_csvs['participant_id'].values.tolist()
+    if not len(np.unique(pp_ids)) == len(pp_ids):
         print('### WARNING REPEATED PARTICIPATION ###')
-        double_submission = set([x for x in all_csvs['participant_id'].values if all_csvs['participant_id'].values.tolist().count(x) > 1])
+        double_submission = {[x for x in pp_ids if pp_ids.count(x) > 1]}
         print(double_submission)
 
-    df_out = pd.DataFrame(columns = all_csvs.columns)
-    all_files = []
-    all_rules = []
-    all_duration = []
-    all_instruct_time = []
-    all_pause = []
-    all_debrief = []
-    all_bonus = []
-    for file_name in os.listdir(path_to_data):
+    return all_csvs
 
-        f = os.path.join(path_to_data, file_name)
-        if not os.path.isfile(f):
-            continue
-        [t_data, e_data,parameters_data] = retrieve_data(f,['sdata','edata','parameters'])
+def pd2np(all_data, col_group):
 
-        this_csv = all_csvs.loc[all_csvs['participant_id'] == e_data['expt_turker']]
-        df_out = df_out.append(this_csv, ignore_index=True)
-        all_files.append(file_name)
-        all_rules.append(e_data['expt_group'])
+    acc_data = all_data.set_index(col_group)['sdata-resp_correct']
+    shape = tuple(map(len, acc_data.index.levels))
+    arr = np.full(shape, np.nan)
+    # fill it using Numpy's advanced indexing
+    arr[tuple(acc_data.index.codes)] = acc_data.values.flat
 
-        #all_instruct_time.append((t_data['resp_timestamp'][1] - e_data['exp_starttime'])/1000/60)
-        try:
-            all_bonus.append(t_data['bonus'][-1])
-        except KeyError:
-            all_bonus.append('')
-        all_duration.append((e_data['exp_finishtime'] - e_data['exp_starttime'])/1000/60)
-        pause_time = []
-        for iblock, start_time in enumerate(e_data['block_starttime']):
-            pause_time.append((e_data['block_finishtime'][iblock] - start_time)/1000/60)
-        all_pause.append(pause_time)
-
-        debrief_fields = [x for x in e_data.keys() if x.startswith('debrief')]
-        tmp_debrief = []
-        for field in debrief_fields:
-            tmp_debrief.append(field + ' - ' +  e_data[field])
-        all_debrief.append(tmp_debrief)
-
-
-    df_out['filename'] = all_files
-    df_out['condition'] = all_rules
-    df_out['duration'] = all_duration
-    #df_out['instruction_time'] = all_instruct_time
-    df_out['all_pause'] = all_pause
-    df_out['debrief'] = all_debrief
-    df_out['bonus'] = all_bonus
-
-    return df_out
-
-## COLLECT BEHAVIORAL DATA
-def fetch_data(path_to_data, list_of_filenames):
-    df_out = pd.DataFrame(columns=['i_subject', 'group', 'curriculum', 'block_num',
-                                    'trial_num', 'rule', 'seqid', 'response',
-                                    'correct', 'rt'])
-
-    for isub, file_name in enumerate(list_of_filenames):
-        #get participant data
-        f = os.path.join(path_to_data, file_name)
-        [trial_data, experiment_data, parameters_data] = retrieve_data(f,['sdata','edata','parameters'])
-
-        #Check if participants saw 1-step test block
-        if len(parameters_data['block']['trialorder'][-1]) < len(parameters_data['block']['trialorder'][-2]):
-            #last block has fewer trials
-            test_block = True
-
-        for index in trial_data['expt_index']:
-            if index == None:
-                continue
-
-            iblock = trial_data['expt_block'][index]
-            itrial = trial_data['expt_trial'][index]
-
-            row = pd.Series([
-                file_name,
-                experiment_data['expt_group'],
-                experiment_data['expt_curriculum'],
-                iblock,
-                trial_data['expt_trial'][index],
-                parameters_data['block']['ruleID'][iblock],
-                #trial_data['seq'][index],
-                parameters_data['block']['trialorder'][iblock][itrial-1],
-                trial_data['resp_category'][index],
-                trial_data['resp_correct'][index],
-                trial_data['resp_reactiontime'][index]
-            ], index=df_out.columns)
-
-            df_out = df_out.append(row, ignore_index=True)
-
-    return df_out
+    return arr
