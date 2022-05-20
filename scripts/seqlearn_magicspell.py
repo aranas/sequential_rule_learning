@@ -57,7 +57,7 @@ def generate_trial(operators, input_ids, len_seq, replacement=False, for_js_scri
                                 *zip([np.nan]*len(cue),
                                      cue, tuple(op))]) #group per time point t
                 else:
-                    seq.append([[init], *zip(op, cue)])
+                    seq.append([list(ele) for ele in [[init], *zip(op, cue)]])
 
     return seq
 
