@@ -46,7 +46,7 @@ def dicts2df(list_of_dicts):
     df_data = df_data_1row[col_trl + ['edata-expt_turker']].set_index(['edata-expt_turker']).apply(pd.Series.explode).reset_index()
     #add non trl data
     df_repeat = df_data_1row.loc[:, ~df_data_1row.columns.isin(col_trl)]
-    df_data.merge(df_repeat)
+    df_data = df_data.merge(df_repeat)
 
     return df_data
 
@@ -94,32 +94,29 @@ def retrieve_uniqueness_point(seq_id):
 
 ## PRINT A BUNCH OF INFO TO GET A FEEL FOR HOW PARTICIPANT DID
 def output_submission_details(df, fname):
-    iloc = df.index[df['filename'] == fname].tolist()[0]
+    iloc = df.index[df['expt_turker'] == fname].tolist()[0]
     #print out info from servers side
-    print('Subject ID ' + df['filename'][iloc])
-    print('Prolific ID ' + df['participant_id'][iloc])
-    print('Group ' + df['condition'][iloc])
-    print('Prolific time recorded: {0}'.format(np.round(df['time_taken'][iloc]/60)))
-    print('Time to finish: %.2f minutes'% np.round(df['duration'][iloc], decimals=2))
-    try:
-        print('Time spend on instructions: %.2f'% np.round(df['instruction_time'][iloc], decimals=2))
-    except Exception:
-        print('Time spend on instructions: unkown')
+    print('Subject ID: ' + df['expt_turker'][iloc])
+    print('Prolific ID: ' + df['expt_subject'][iloc])
+    print('Group: ' + df['expt_curriculum'][iloc])
 
-        #breaks taken
-    for i_block, duration in enumerate(df['all_pause'][iloc]):
-        print('spend {0} minutes on pause {1}'.format(np.round(duration, decimals=2), i_block))
+    start_tim = df['exp_starttime'][iloc]
+    instruct_tim = df['instruct_finishtime'][iloc] - start_tim
+    finish_tim = df['exp_finishtime'][iloc] - start_tim
+    print('Time to finish: %.2f minutes'% np.round(finish_tim/60000, decimals=2))
+    print('Time spend on instructions: %.2f'% np.round(instruct_tim/60000, decimals=2))
+
+    block_start = np.array(df['block_starttime'][iloc])
+    block_end = np.array(df['block_finishtime'][iloc])
+    block_tim = np.round(np.subtract(block_end, block_start) / 60000, decimals=2)
+    n_block = np.max(df['expt_block'])
+    for i_block in range(n_block):
+        print('spent {0} min on block # {1}'.format(block_tim[i_block], i_block))
+
     print('## Debrief ##')
-    for field in df['debrief'][iloc]:
-        print(field)
+    for col in df.loc[:, df.columns.str.startswith('debrief')]:
+        print('{0} - {1}'.format(col, df[col][1]))
 
-        #print out info from prolific side
-    try:
-        print('## Prolific ##')
-        print('Country of Birth: ' + df['Country of Birth'][iloc])
-        print('Age: {0}'.format(df['age'][iloc]))
-    except Exception:
-        print('no prolific data')
 
 ## COLLECT DEMOGRAPHIC DATA & CHECK FOR X-STUDY DUPLICATES
 def fetch_demographics(path_to_demographic, path_to_data):
@@ -140,7 +137,7 @@ def fetch_demographics(path_to_demographic, path_to_data):
 
 def pd2np(all_data, col_group):
 
-    acc_data = all_data.set_index(col_group)['sdata-resp_correct']
+    acc_data = all_data.set_index(col_group)['resp_correct']
     shape = tuple(map(len, acc_data.index.levels))
     arr = np.full(shape, np.nan)
     # fill it using Numpy's advanced indexing

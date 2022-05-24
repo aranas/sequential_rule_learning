@@ -2,100 +2,123 @@
 
 #%%
 import os
+import itertools
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import src.behavior_preprocess as prep
 
 #%% GET ALL DATA INTO DATAFRAME
-PATH_DATA = "data/prolific/data/2step_V2"
+PATH_DATA = "data/test"
 PATH_DEMOGRAPHIC = "data/prolific/demographics"
-PATH_RESULTS = "results/prolific/2step_V2/"
+PATH_RESULTS = ""
 
 df_subject = prep.fetch_demographics(PATH_DEMOGRAPHIC, PATH_DATA)
 
 all_data = []
 for file in os.listdir(PATH_DATA):
+    print(file)
     PATH_TO_FILE = '/'.join([PATH_DATA, file])
     if not PATH_TO_FILE.endswith('.txt'):
         continue
     #retrieve data and put into large pandas dataframe
     data_dicts = prep.data2dict(PATH_TO_FILE)
+    data_dicts[0]
     all_data.append(prep.dicts2df(data_dicts))
 
-all_data = pd.concat(all_data).reset_index()
+all_data = pd.concat(all_data).reset_index(drop=True)
+all_data = all_data.drop(0)
+all_data.columns = [str.split('-',1)[1] for str in all_data.columns]
 
 #extract correct/incorrect per participant & block
-col_group = ['edata-expt_turker', 'sdata-expt_block', 'sdata-expt_index']
+col_group = ['expt_turker', 'expt_block', 'expt_index']
 np_acc = prep.pd2np(all_data, col_group)
 
-##############################################
-# Quick accuracy overview
-df_acc = all_data[['edata-expt_turker', 'sdata-expt_block', 'sdata-resp_correct']].groupby(['edata-expt_turker', 'sdata-expt_block']).agg(['sum', 'count'])
-df_acc.columns = ['_'.join(column) for column in df_acc.columns]
-df_acc['acc'] = df_acc['sdata-resp_correct_sum']/df_acc['sdata-resp_correct_count']
-df_acc = df_acc['acc'].unstack()
-
-# First pass, quick stats for each submission, quality check
-for filename in  df_subject['filename'].values:
-    #if 'simple' in  set(df_data[df_data['i_subject'] == filename]['group']):
-    #    continue
-    #if 'magician' not in set(df_data[df_data['i_subject'] == filename]['curriculum']):
-    #    continue
-    print(filename)
-    prep.output_submission_details(df_subject, filename)
-    print('PERFORMANCE: ')
-    for iblock in range(len(df_acc.columns)):
-        print(np.round(df_acc[iblock][filename], decimals=2))
+np.nanmean(np_acc[0], axis=1)
 
 #%%
-# Compute bonus
-for file_name in df_subject['filename'].values:
-    path_file = os.path.join(PATH_DATA, file_name)
-    prolific_id = df_subject[df_subject['filename'] == file_name]['participant_id']
-    recorded_bonus = df_subject[df_subject['filename'] == file_name]['bonus']
+##############################################
 
-    single_data = df_data[df_data['i_subject'] == file_name]
-    test_block_id = max(single_data['block_num'])
-    n_blocks = len(set(single_data['block_num']))-1
+all_data.keys()
+# First pass, quick stats for each submission, quality check
+all_subj = list(set(all_data['expt_turker']))
+for subj in all_subj:
+    print(subj)
+    prep.output_submission_details(all_data, subj)
 
-    if 'simple' in  set(df_data[df_data['i_subject'] == file_name]['group']):
-        continue
-    if 'input' not in set(df_data[df_data['i_subject'] == file_name]['curriculum']):
-        continue
+#%% Plot trial structure per participant
+def list2flat(alist):
+  for item in alist:
+    if isinstance(item, list):
+      for subitem in item: yield subitem
+    else:
+      yield item
 
-    total_bonus = 0
-    for i_block in set(single_data['block_num']):
-        #if i_block == test_block_id:
-        #    continue
-        response_correct =  single_data[single_data['block_num'] == i_block]['correct']
-        _, bonus = prep.compute_bonus([0 if i is None else i for i in response_correct], 3/n_blocks)
-        if bonus > 0:
-            total_bonus = total_bonus+bonus
+# get overview of unique sequences
+unique_seq = []
+for seq_block in all_data['sequences'][1]:
+    for seq in seq_block:
+        seq = list(list2flat(seq))
+        if seq not in unique_seq:
+            unique_seq.append(seq)
 
-    print('{0},{1}'.format(prolific_id.values[0], recorded_bonus.values[0]))
-    #print(file_name)
-    #print(total_bonus)
+# for each subject, get order of trials based on indices in unique sequence list
+all_trl_idx = []
+for subj in all_subj:
+    subj_data = all_data[all_data['expt_turker'] == subj]
 
-#%% Visualize trial order, why did some people learn so well?
-all_reps = []
-for filename in  df_subject['filename'].values:
-    print(filename)
-    dt_tmp = df_data[df_data['i_subject'] == filename]
+    for i_block in all_data['expt_block'].unique():
+        sequences = subj_data[subj_data['expt_block'] == i_block]['seq']
+        flat_sequences = sequences.apply(lambda x: list(list2flat(x)))
 
-    f = os.path.join(PATH_DATA, filename)
-    [s_data, _, parameters_data] = prep.retrieve_data(f, ['sdata', 'edata', 'parameters'])
-    print(s_data['bonus'])
-    print(len(s_data['bonus']))
-    count_rep_blocked = []
-    for trials in parameters_data['block']['trialorder']:
-        count_rep = 0
-        for idx, seq_num in enumerate(trials[:-1]):
-            if seq_num == trials[idx+1]:
-                count_rep += 1
-        count_rep_blocked.append(count_rep)
-    print(count_rep_blocked)
-    all_reps.append(count_rep_blocked)
+        unique_idx = []
+        for seq in flat_sequences:
+            for idx, u_seq in enumerate(unique_seq):
+                if u_seq == seq:
+                    unique_idx.append(idx)
+        all_trl_idx.append(unique_idx)
+# viz trial structure
+cols = ['magician', 'ingredient', 'state', 'resp_correct']
+feedback = np.array(all_data['block-feedback'][1])
+
+n_blocks = len(all_trl_idx)
+trialstruct = []
+for i_subj, subj in enumerate(all_subj):
+    for i_block in range(n_blocks):
+        tmp_df = all_data.loc[(all_data['expt_turker'] == subj) & (all_data['expt_block'] == i_block)]
+        tmp_df = tmp_df[cols]
+
+        trial_num, n_step = np.vstack(tmp_df['magician']).shape
+        steps = np.matlib.repmat(list(range(n_step)), 1, trial_num).flatten()
+        magician = np.vstack(tmp_df['magician']).flatten()
+        ingredient = np.vstack(tmp_df['ingredient']).flatten()
+        state = np.repeat(np.vstack(tmp_df['state']).flatten(), n_step)
+        trlidx = np.repeat(all_trl_idx[i_block], n_step)
+
+        trialstruct.append(np.vstack([steps, magician, ingredient, state, trlidx]))
+
+trialstruct = np.column_stack((itertools.zip_longest(*trialstruct, fillvalue=np.nan)))
+
+#%%
+#create custom colormap
+# map trial idx onto continuous colormap
+# map categorical values (e.g. mag or ingredient id) onto other colors
+import matplotlib.colors as mcolors
+colors1 = plt.cm.get_cmap('tab20', 20)(np.linspace(0., 1, 16))
+colors2 = plt.cm.get_cmap('cool', 20)(np.linspace(0, 1, 72))
+# cmbine them and build a new colormap
+colors = np.vstack((colors1, colors2))
+mymap = mcolors.LinearSegmentedColormap.from_list('my_colormap', colors)
+
+trialstruct[6]
+fig, axes = plt.subplots(nrows=n_blocks+1, ncols=1, figsize=(30, 30))
+for i, (ax, struct) in enumerate(zip(axes.flat, trialstruct)):
+    tmp = struct.copy()
+    tmp[4] = tmp[4]+15
+    im = ax.imshow(np.vstack(tmp), cmap=mymap, vmin=0, vmax=72)
+axes[-1].imshow(np.array([range(16)]), cmap=plt.cm.get_cmap('tab20', 16))
+fig.colorbar(im, ax=axes.ravel().tolist())
+
 
 #%% Plot data per participant
 for file_name in df_subject['filename'].values:
