@@ -31,21 +31,23 @@ import numpy as np
 import seqlearn_magicspell as magic
 
 #%% SET PARAMETERS
-PATH_WRITE = 'results/online_experiment/stimulus_lists/'
-SUFFIX = '_C_test'
-block_rule_names = [['forceB', 'crossB'], ['forceB', 'crossB'],
-                    ['forceB', 'crossB'], ['forceB', 'crossB'],
-                    ['forceB', 'crossB'],
-                    ['forceB', 'crossB'],
-                    ['forceB', 'crossB']]
-block_inputs = [[0, 1], [0, 1], [0, 1], [0, 1], [0, 1], [0, 1], [12, 13]] # use 12 & 13 for non-random images
-block_n_steps = [2, 2, 2, 2, 2, 1, 2]
-block_feedback = [1, 1, 1, 1, 1, 0, 1]
-block_randomise = [1, 1, 1, 1, 0, 0, 0]
+PATH_WRITE = 'results/online_experiment/stimulus_lists'
+SUFFIX = '_C_blockinput'
+block_rule_names = [['forceB', 'crossB'], ['forceB', 'crossB'], #training
+                    ['forceB', 'crossB'], ['forceB', 'crossB'], #training
+                    ['forceB', 'crossB'], ['forceB', 'crossB'], #training
+                    ['forceB', 'crossB'], ['forceB', 'crossB'], #training
+                    ['forceB', 'crossB'], #near transfer block
+                    ['forceB', 'crossB'], #1-step rule check
+                    ['forceB', 'crossB']] #far transfer block
+block_inputs = [[0, 1], [0, 1], [0, 1], [0, 1], [0, 1], [0, 1], [0, 1], [0, 1], [0, 1], [0, 1], [12, 13]] # use 12 & 13 for non-random images
+block_n_steps = [2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 2]
+block_feedback = [1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1]
+block_randomise = [1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0]
 
 curriculum_block_input = True
-curriculum_block_mag = True
-
+curriculum_block_mag = False
+n_trainblocks = 8
 
 all_param = [PATH_WRITE, block_rule_names,
              block_inputs, block_n_steps, block_feedback, block_randomise,
@@ -55,6 +57,8 @@ all_param = [PATH_WRITE, block_rule_names,
 with open(''.join([PATH_WRITE, 'parameters', SUFFIX]), 'wb') as file:
     pickle.dump(all_param, file)
 
+#with open(''.join([PATH_WRITE, '/parameters', SUFFIX]), 'rb') as file:
+#    x = pickle.load
 
 #%% GENERATE VARS based on parameters & generate sequences
 if len(set([len(block_n_steps), len(block_rule_names), len(block_inputs)])) > 1:
@@ -88,14 +92,17 @@ for n_steps, rule_names, inputs in zip(block_n_steps, block_rule_names, block_in
 # will be applied to first 4 blocks
 if curriculum_block_input | curriculum_block_mag:
 
-    n_trainblocks = 4
     input_ids = list(set(np.array(block_inputs)[:n_trainblocks].flatten()))
     input_mag = sorted([all_rule_names.index(rule) for rule in uniq_rule_names])
     new_seqs = []
+    cnt = 0
+    bseq = seqs[0]
     for cnt, bseq in enumerate(seqs):
         if cnt >= 4:
-            new_seqs.append(bseq)
+            if cnt >= n_trainblocks:
+                new_seqs.append(bseq)
             continue
+
         if curriculum_block_input:
             # first trials that start with in1 and continue with in1
             if cnt == 0:
@@ -106,8 +113,6 @@ if curriculum_block_input | curriculum_block_mag:
                 sel = [iseq for iseq in bseq if (iseq[1][1] == input_ids[0]) & (iseq[2][1] == input_ids[1])]
             if cnt == 3:
                 sel = [iseq for iseq in bseq if (iseq[1][1] == input_ids[1]) & (iseq[2][1] == input_ids[0])]
-            #sel = np.vstack((sel, sel, sel, sel)).tolist()
-            new_seqs.append(sel)
         elif curriculum_block_mag:
             # first trials that start with in1 and continue with in1
             if cnt == 0:
@@ -118,7 +123,8 @@ if curriculum_block_input | curriculum_block_mag:
                 sel = [iseq for iseq in bseq if (iseq[1][0] == input_mag[1]) & (iseq[2][0] == input_mag[0])]
             if cnt == 3:
                 sel = [iseq for iseq in bseq if (iseq[1][0] == input_mag[0]) & (iseq[2][0] == input_mag[1])]
-            #sel = np.vstack((sel, sel, sel, sel)).tolist()
+        sel = np.vstack((sel, sel, sel, sel)).tolist()
+        for i in range(n_trainblocks//4):
             new_seqs.append(sel)
 
     seqs = new_seqs
