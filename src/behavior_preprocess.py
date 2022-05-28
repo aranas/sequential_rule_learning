@@ -2,6 +2,7 @@
   and save them to pandas arrays or operates on the resulting dataframe'''
 
 import json
+from prettytable import PrettyTable
 from pathlib import Path as pth
 import os
 import numpy as np
@@ -109,13 +110,20 @@ def output_submission_details(df, fname):
     block_start = np.array(df['block_starttime'][iloc])
     block_end = np.array(df['block_finishtime'][iloc])
     block_tim = np.round(np.subtract(block_end, block_start) / 60000, decimals=2)
-    n_block = np.max(df['expt_block'])
-    for i_block in range(n_block):
-        print('spent {0} min on block # {1}'.format(block_tim[i_block], i_block))
+
+    i_block = list(range(len(block_tim)))
+    acc = df['block_accuracy'][iloc][1:]
+    bonus = df['block_bonus'][iloc][1:]
+    blockwise_print = PrettyTable()
+    blockwise_print.add_column('Block #', i_block)
+    blockwise_print.add_column('Accuracy', acc)
+    blockwise_print.add_column('Bonus earned', bonus)
+    blockwise_print.add_column('Time spent', block_tim)
+    print(blockwise_print)
 
     print('## Debrief ##')
     for col in df.loc[:, df.columns.str.startswith('debrief')]:
-        print('{0} - {1}'.format(col, df[col][1]))
+        print('{0} - {1}'.format(col, df[col][iloc]))
 
 
 ## COLLECT DEMOGRAPHIC DATA & CHECK FOR X-STUDY DUPLICATES

@@ -5,11 +5,12 @@ import os
 import itertools
 import numpy as np
 import pandas as pd
+import pickle
 import matplotlib.pyplot as plt
 import src.behavior_preprocess as prep
 
 #%% GET ALL DATA INTO DATAFRAME
-PATH_DATA = "data/test"
+PATH_DATA = "data/v3/data"
 PATH_DEMOGRAPHIC = "data/prolific/demographics"
 PATH_RESULTS = ""
 
@@ -17,107 +18,52 @@ df_subject = prep.fetch_demographics(PATH_DEMOGRAPHIC, PATH_DATA)
 
 all_data = []
 for file in os.listdir(PATH_DATA):
-    print(file)
     PATH_TO_FILE = '/'.join([PATH_DATA, file])
     if not PATH_TO_FILE.endswith('.txt'):
         continue
     #retrieve data and put into large pandas dataframe
     data_dicts = prep.data2dict(PATH_TO_FILE)
-    data_dicts[0]
     all_data.append(prep.dicts2df(data_dicts))
 
 all_data = pd.concat(all_data).reset_index(drop=True)
 all_data = all_data.drop(0)
-all_data.columns = [str.split('-',1)[1] for str in all_data.columns]
+all_data.columns = [str.split('-', 1)[1] for str in all_data.columns]
+all_data = all_data.fillna(value=np.nan)
 
+with open(''.join([PATH_DATA, '/all_data', '_csv']), 'wb') as file:
+    pickle.dump(all_data, file)
+
+#%% ACCURACY
 #extract correct/incorrect per participant & block
 col_group = ['expt_turker', 'expt_block', 'expt_index']
 np_acc = prep.pd2np(all_data, col_group)
+np.nanmean(np_acc, axis=2)
 
-np.nanmean(np_acc[0], axis=1)
+#%%
 
 #%%
 ##############################################
-
 all_data.keys()
+all_data['debrief_magician']
 # First pass, quick stats for each submission, quality check
 all_subj = list(set(all_data['expt_turker']))
+subj = all_subj[0]
 for subj in all_subj:
     print(subj)
     prep.output_submission_details(all_data, subj)
 
-#%% Plot trial structure per participant
-def list2flat(alist):
-  for item in alist:
-    if isinstance(item, list):
-      for subitem in item: yield subitem
-    else:
-      yield item
+#%% Save bonus to file
+with open('bonus.csv', 'w') as out:
+    all_data.keys()
+    for subj, subj_data in all_data.groupby('expt_turker'):
+        bonus_vec = np.array(subj_data['block_bonus'].iloc[0])
+        bonus_vec = bonus_vec[bonus_vec != np.array(None)]
+        bonus = sum([bonus for bonus in bonus_vec if bonus>0])
 
-# get overview of unique sequences
-unique_seq = []
-for seq_block in all_data['sequences'][1]:
-    for seq in seq_block:
-        seq = list(list2flat(seq))
-        if seq not in unique_seq:
-            unique_seq.append(seq)
-
-# for each subject, get order of trials based on indices in unique sequence list
-all_trl_idx = []
-for subj in all_subj:
-    subj_data = all_data[all_data['expt_turker'] == subj]
-
-    for i_block in all_data['expt_block'].unique():
-        sequences = subj_data[subj_data['expt_block'] == i_block]['seq']
-        flat_sequences = sequences.apply(lambda x: list(list2flat(x)))
-
-        unique_idx = []
-        for seq in flat_sequences:
-            for idx, u_seq in enumerate(unique_seq):
-                if u_seq == seq:
-                    unique_idx.append(idx)
-        all_trl_idx.append(unique_idx)
-# viz trial structure
-cols = ['magician', 'ingredient', 'state', 'resp_correct']
-feedback = np.array(all_data['block-feedback'][1])
-
-n_blocks = len(all_trl_idx)
-trialstruct = []
-for i_subj, subj in enumerate(all_subj):
-    for i_block in range(n_blocks):
-        tmp_df = all_data.loc[(all_data['expt_turker'] == subj) & (all_data['expt_block'] == i_block)]
-        tmp_df = tmp_df[cols]
-
-        trial_num, n_step = np.vstack(tmp_df['magician']).shape
-        steps = np.matlib.repmat(list(range(n_step)), 1, trial_num).flatten()
-        magician = np.vstack(tmp_df['magician']).flatten()
-        ingredient = np.vstack(tmp_df['ingredient']).flatten()
-        state = np.repeat(np.vstack(tmp_df['state']).flatten(), n_step)
-        trlidx = np.repeat(all_trl_idx[i_block], n_step)
-
-        trialstruct.append(np.vstack([steps, magician, ingredient, state, trlidx]))
-
-trialstruct = np.column_stack((itertools.zip_longest(*trialstruct, fillvalue=np.nan)))
-
-#%%
-#create custom colormap
-# map trial idx onto continuous colormap
-# map categorical values (e.g. mag or ingredient id) onto other colors
-import matplotlib.colors as mcolors
-colors1 = plt.cm.get_cmap('tab20', 20)(np.linspace(0., 1, 16))
-colors2 = plt.cm.get_cmap('cool', 20)(np.linspace(0, 1, 72))
-# cmbine them and build a new colormap
-colors = np.vstack((colors1, colors2))
-mymap = mcolors.LinearSegmentedColormap.from_list('my_colormap', colors)
-
-trialstruct[6]
-fig, axes = plt.subplots(nrows=n_blocks+1, ncols=1, figsize=(30, 30))
-for i, (ax, struct) in enumerate(zip(axes.flat, trialstruct)):
-    tmp = struct.copy()
-    tmp[4] = tmp[4]+15
-    im = ax.imshow(np.vstack(tmp), cmap=mymap, vmin=0, vmax=72)
-axes[-1].imshow(np.array([range(16)]), cmap=plt.cm.get_cmap('tab20', 16))
-fig.colorbar(im, ax=axes.ravel().tolist())
+        group = subj_data['expt_group'].unique()[0]
+        curr = subj_data['expt_curriculum'].unique()[0]
+        subid = subj_data['expt_subject'].unique()[0]
+        out.write('{4} {2}-{3} {0},{1}\n'.format(subj, bonus, group, curr,subid))
 
 
 #%% Plot data per participant
@@ -158,8 +104,8 @@ for file_name in df_subject['filename'].values:
         plt.vlines(idx_incorrect, y_min, y_max, 'k')
         plt.vlines(idx_timeouts, y_min, y_max, 'r')
         plt.vlines(idx_unique, y_min, y_max, 'b')
-        plt.ylim(y_min,y_max)
-        plt.xlim(0,32)
+        plt.ylim(y_min, y_max)
+        plt.xlim(0, 32)
 
     fig.legend(['reaction time', 'incorrect trials', 'time_out', 'uniqueness point'], loc='lower center')
     fig.suptitle('subject {0} - group {1}'.format(set(single_data['i_subject']), set(single_data['group'])))
