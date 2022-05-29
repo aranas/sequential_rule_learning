@@ -65,7 +65,6 @@ with open('bonus.csv', 'w') as out:
         subid = subj_data['expt_subject'].unique()[0]
         out.write('{4} {2}-{3} {0},{1}\n'.format(subj, bonus, group, curr,subid))
 
-
 #%% Plot data per participant
 for file_name in df_subject['filename'].values:
     path_file = os.path.join(PATH_DATA, file_name)
@@ -171,36 +170,3 @@ for file_name in df_subject['filename'].values:
 mean_acc = df_acc.groupby(['block_num', 'group', 'curriculum']).agg(['mean', np.nanstd, 'count'])
 
 #%%
-# Draw a scatter plot
-import seaborn as sns
-
-df_select = df_acc[df_acc['group'] == 'complex'].copy()
-df_select['block_num'] = df_select['block_num']+1
-df_tmp = pd.concat([df_select, df_simple], axis=0)
-
-plt.figure()
-g = sns.lineplot(x='block_num', y='acc', style='curriculum', hue='group', data=df_tmp,
-                  err_style='bars', err_kws={'capsize':6}, marker='o', ci=95)
-plt.legend(bbox_to_anchor=(1.02, 0.55), loc='upper left', borderaxespad=0)
-plt.title('main effect accuracy learning')
-plt.savefig('results/prolific/group/2step'+'main_acc.jpg', bbox_inches="tight")
-
-plt.figure()
-g=sns.lineplot(x='block_num', y='rt', style='curriculum', hue='group', data=df_tmp[df_tmp['block_num'] != 11],
-            err_style='bars', err_kws={'capsize':6}, marker='o', ci=95)
-plt.legend(bbox_to_anchor=(1.02, 0.55), loc='upper left', borderaxespad=0)
-plt.title('main effect RTs')
-plt.savefig('results/prolific/group/2step'+'main_RT.jpg', bbox_inches="tight")
-
-#%%
-from scipy.stats import mannwhitneyu
-
-import itertools
-# create an empty dictionary
-test_results = {}
-
-for i_block in set(df_acc.block_num):
-    group1 = df_acc.where((df_acc.curriculum == 'interleaved') & (df_acc.block_num == i_block)).dropna()
-    group2 = df_acc.where((df_acc.curriculum == 'magician') & (df_acc.block_num == i_block)).dropna()
-    # add the output to the dictionary
-    test_results[str(i_block)] = mannwhitneyu(group1['acc'], group2['acc'])
