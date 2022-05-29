@@ -2,11 +2,10 @@
   and save them to pandas arrays or operates on the resulting dataframe'''
 
 import json
-from prettytable import PrettyTable
 from pathlib import Path as pth
-import os
 import numpy as np
 import pandas as pd
+from prettytable import PrettyTable
 
 #%%
 path_to_data = "data/prolific/data/2step_V2"
@@ -32,7 +31,18 @@ def data2dict(file_path):
     return out
 
 def dicts2df(list_of_dicts):
+    """ Convert a list of dictionaries into a pandas dataframe,
+        where each dictionary is assumed to contain vectors for values
+        each vector being of the same length (e.g. # of trials), such that
+        it can be unrolled over rows.
 
+    Parameters:
+        list_of_dicts (list) : list of dicts
+
+    Returns:
+        df_data (DataFrame) : a pandas dataframe with one row per trial
+
+    """
     all_dfs = []
     for mylist in list_of_dicts:
         df_tmp = pd.json_normalize(mylist, sep='-')
@@ -69,7 +79,7 @@ def compute_bonus(responses, max_bonus):
     acc = np.nansum(responses)/len(responses)
     bonus_var = (((acc*100)-50)/50)*max_bonus
 
-    return acc,bonus_var
+    return acc, bonus_var
 
 # find which trial was known based on generalised data.
 def retrieve_uniqueness_point(seq_id):
@@ -94,26 +104,32 @@ def retrieve_uniqueness_point(seq_id):
     return i_trial
 
 ## PRINT A BUNCH OF INFO TO GET A FEEL FOR HOW PARTICIPANT DID
-def output_submission_details(df, fname):
-    iloc = df.index[df['expt_turker'] == fname].tolist()[0]
-    #print out info from servers side
-    print('Subject ID: ' + df['expt_turker'][iloc])
-    print('Prolific ID: ' + df['expt_subject'][iloc])
-    print('Group: ' + df['expt_curriculum'][iloc])
+def output_submission_details(data, fname):
+    """ print information drawn from data
 
-    start_tim = df['exp_starttime'][iloc]
-    instruct_tim = df['instruct_finishtime'][iloc] - start_tim
-    finish_tim = df['exp_finishtime'][iloc] - start_tim
+    Parameters:
+        data (dataFrame) : pandas dataframe with trial information per row
+        fname (str) : string with subject name for which info is extracted
+    """
+    iloc = data.index[data['expt_turker'] == fname].tolist()[0]
+    #print out info from servers side
+    print('Subject ID: ' + data['expt_turker'][iloc])
+    print('Prolific ID: ' + data['expt_subject'][iloc])
+    print('Group: ' + data['expt_curriculum'][iloc])
+
+    start_tim = data['exp_starttime'][iloc]
+    instruct_tim = data['instruct_finishtime'][iloc] - start_tim
+    finish_tim = data['exp_finishtime'][iloc] - start_tim
     print('Time to finish: %.2f minutes'% np.round(finish_tim/60000, decimals=2))
     print('Time spend on instructions: %.2f'% np.round(instruct_tim/60000, decimals=2))
 
-    block_start = np.array(df['block_starttime'][iloc])
-    block_end = np.array(df['block_finishtime'][iloc])
+    block_start = np.array(data['block_starttime'][iloc])
+    block_end = np.array(data['block_finishtime'][iloc])
     block_tim = np.round(np.subtract(block_end, block_start) / 60000, decimals=2)
 
     i_block = list(range(len(block_tim)))
-    acc = df['block_accuracy'][iloc][1:]
-    bonus = df['block_bonus'][iloc][1:]
+    acc = data['block_accuracy'][iloc][1:]
+    bonus = data['block_bonus'][iloc][1:]
     blockwise_print = PrettyTable()
     blockwise_print.add_column('Block #', i_block)
     blockwise_print.add_column('Accuracy', acc)
@@ -122,9 +138,8 @@ def output_submission_details(df, fname):
     print(blockwise_print)
 
     print('## Debrief ##')
-    for col in df.loc[:, df.columns.str.startswith('debrief')]:
-        print('{0} - {1}'.format(col, df[col][iloc]))
-
+    for col in data.loc[:, data.columns.str.startswith('debrief')]:
+        print('{0} - {1}'.format(col, data[col][iloc]))
 
 ## COLLECT DEMOGRAPHIC DATA & CHECK FOR X-STUDY DUPLICATES
 def fetch_demographics(path_to_demographic, path_to_data):
@@ -144,7 +159,17 @@ def fetch_demographics(path_to_demographic, path_to_data):
     return all_csvs
 
 def pd2np(all_data, col_group):
+    """ Converts data in pandas dataframe into multidimensional numpy array
 
+    Parameters:
+        all_data (df) : pandas dataframe with one trial per row
+        col_group (list) : list of column names that contain numeric information
+                            to be extracted.
+
+    Return:
+        arr (np.array) : multidim numpy array with one dimension for each entry
+                            in 'col_group'
+    """
     acc_data = all_data.set_index(col_group)['resp_correct']
     shape = tuple(map(len, acc_data.index.levels))
     arr = np.full(shape, np.nan)

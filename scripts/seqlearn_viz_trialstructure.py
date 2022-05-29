@@ -5,10 +5,7 @@ import itertools
 import pickle
 import operator
 import numpy as np
-import numpy.matlib
-import pandas as pd
 import matplotlib.pyplot as plt
-import src.behavior_preprocess as prep
 import src.my_py_utils as util
 
 #%%
@@ -17,13 +14,12 @@ PATH_DATA = "data/v3/data/test"
 with open(''.join([PATH_DATA, '/all_data', '_csv']), 'rb') as file:
     all_data = pickle.load(file)
 
-subjs = all_data[all_data['expt_group'] =='simple']['expt_turker'].unique()
+subjs = all_data[all_data['expt_group'] == 'simple']['expt_turker'].unique()
 n_blocks = len(all_data['expt_block'].unique())
 
 #%% Plot trial structure per participant
 
 # for each subject, get order of trials based on indices in unique sequence list
-subj = '5c5da3b159ec1d0001fe5606'
 for subj in subjs:
     # get all unique sequences & map individual trial order re index in unique list of seqs
     unique_seq = []
@@ -39,7 +35,7 @@ for subj in subjs:
 
     all_trl_idx = []
     trialstruct = []
-    max_idx = 0
+    MAX_IDX = 0
     for i_block, block_data in subj_data.groupby('expt_block'):
 
         sequences = block_data['seq']
@@ -50,12 +46,12 @@ for subj in subjs:
             for idx, u_seq in enumerate(unique_seq):
                 if u_seq == seq:
                     unique_idx.append(idx)
-        max_idx = max(max_idx, max(unique_idx))
+        MAX_IDX = max(MAX_IDX, max(unique_idx))
 
         trial_num, n_step = np.vstack(block_data['magician']).shape
         steps = np.matlib.repmat(list(range(n_step)), 1, trial_num).flatten()
         magician = np.vstack(block_data['magician']).flatten()
-        if n_step==2:
+        if n_step == 2:
             f = operator.itemgetter(1, 3)
         else:
             f = operator.itemgetter(1)
@@ -81,6 +77,6 @@ for subj in subjs:
     fig = plt.figure(figsize=(10, 10))
     mymap = plt.cm.get_cmap('magma', 20)
     trl_idx_matrix = np.column_stack((itertools.zip_longest(*all_trl_idx, fillvalue=np.nan)))
-    plt.imshow(trl_idx_matrix, cmap=mymap, vmin=0, vmax=max_idx)
+    plt.imshow(trl_idx_matrix, cmap=mymap, vmin=0, vmax=MAX_IDX)
     plt.colorbar()
     plt.title(subj)
