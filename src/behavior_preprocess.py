@@ -158,19 +158,20 @@ def fetch_demographics(path_to_demographic, path_to_data):
 
     return all_csvs
 
-def pd2np(all_data, col_group):
+def pd2np(all_data, col_group, col_value):
     """ Converts data in pandas dataframe into multidimensional numpy array
 
     Parameters:
         all_data (df) : pandas dataframe with one trial per row
-        col_group (list) : list of column names that contain numeric information
-                            to be extracted.
+        col_group (list) : list of column names along which dimensions in numpy array will be created.
+                        len(col_group) must be >= 2
+        col_value (str) : column name which will be used to populate dataframe
 
     Return:
         arr (np.array) : multidim numpy array with one dimension for each entry
                             in 'col_group'
     """
-    acc_data = all_data.set_index(col_group)['resp_correct']
+    acc_data = all_data.set_index(col_group)[col_value]
     shape = tuple(map(len, acc_data.index.levels))
     arr = np.full(shape, np.nan)
     # fill it using Numpy's advanced indexing

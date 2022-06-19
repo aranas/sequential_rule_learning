@@ -38,7 +38,7 @@ all_data.groupby(col_group)['expt_subject'].nunique()
 
 #extract correct/incorrect per participant & block
 col_group = ['expt_turker', 'expt_block', 'expt_index']
-np_acc = prep.pd2np(all_data, col_group)
+np_acc = prep.pd2np(all_data, col_group,'resp_correct')
 np.nanmean(np_acc, axis=2)
 
 #%% Check for repeat participants
@@ -91,7 +91,23 @@ with open('bonus.csv', 'w') as out:
         out.write('{0},{1}\n'.format(prolific_id[0], bonus, group, curr, subid))
         #out.write('{4} {2}-{3} {0},{1}\n'.format(subj, bonus, group, curr, subid))
 
+#%% Preprocessing
+# add info time-outs
+timeouts = all_data.groupby(['expt_turker'], as_index=False)['resp_correct'].apply(lambda x: pd.Series({'n_timeout':
+                                                                               x.isnull().sum()}))
+all_data = pd.merge(all_data,timeouts, on='expt_turker')
+
+df_acc = all_data.groupby(['expt_turker', 'expt_block'], as_index=False)['resp_correct'].apply(lambda x: pd.Series({'acc':
+                                                                x.sum()/x.count()}))
+
+df_learner = df_acc.groupby(['expt_turker'], as_index=False).apply(lambda x: pd.Series({'learned_1':
+                                                x['acc'].values[0] < x['acc'].values[1],
+                                                'learned_2': x['acc'].values[2] < x['acc'].values[3],
+                                                'learned_3': x['acc'].values[4] < x['acc'].values[5],
+                                                'learned_4': x['acc'].values[6] < x['acc'].values[7]}))
+all_data = pd.merge(all_data,df_learner, on='expt_turker')
+
 #%% Save data
 
-with open(''.join([PATH_RESULTS, '/near_generalisers', '_csv']), 'wb') as file:
+with open(''.join([PATH_RESULTS, '/all_data', '_csv']), 'wb') as file:
     pickle.dump(all_data, file)
