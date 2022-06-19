@@ -30,6 +30,8 @@ all_data = all_data.drop(0)
 all_data.columns = [str.split('-', 1)[1] for str in all_data.columns]
 all_data = all_data.fillna(value=np.nan)
 
+all_data = all_data.sort_values('expt_turker') # some transformations do automatic grouping later, so we force sorting here to begin with
+
 #%% ACCURACY
 #how many submissions per
 col_group = ['expt_group', 'expt_curriculum', 'expt_block']
@@ -99,13 +101,26 @@ all_data = pd.merge(all_data,timeouts, on='expt_turker')
 
 df_acc = all_data.groupby(['expt_turker', 'expt_block'], as_index=False)['resp_correct'].apply(lambda x: pd.Series({'acc':
                                                                 x.sum()/x.count()}))
+# add info generaliser
+df_acc['generaliser'] = False
+for subj in df_acc.loc[(df_acc.acc > 0.6) & (df_acc.expt_block == 10),'expt_turker']:
+    df_acc.loc[df_acc.expt_turker == subj,'generaliser'] = True
 
+all_data = pd.merge(all_data,df_acc[['expt_turker', 'generaliser']], on='expt_turker')
+
+# add info learning conservative
 df_learner = df_acc.groupby(['expt_turker'], as_index=False).apply(lambda x: pd.Series({'learned_1':
                                                 x['acc'].values[0] < x['acc'].values[1],
                                                 'learned_2': x['acc'].values[2] < x['acc'].values[3],
                                                 'learned_3': x['acc'].values[4] < x['acc'].values[5],
                                                 'learned_4': x['acc'].values[6] < x['acc'].values[7]}))
 all_data = pd.merge(all_data,df_learner, on='expt_turker')
+
+#add info any learning
+df_learner = df_acc.groupby(['expt_turker'], as_index=False).apply(lambda x: pd.Series({'max_training_score': np.max(x['acc'].values[:7]) }))
+all_data = pd.merge(all_data,df_learner, on='expt_turker')
+
+all_data.keys()
 
 #%% Save data
 

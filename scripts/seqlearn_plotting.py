@@ -18,7 +18,7 @@ with open(''.join([PATH_DATA, '/all_data', '_csv']), 'rb') as file:
 subjs = all_data['expt_subject'].unique()
 n_blocks = len(all_data['expt_block'].unique())
 
-#%% fix condition naming; exclude single step block; exclude practice trial (block == nan)
+# fix condition naming; exclude single step block; exclude practice trial (block == nan)
 all_data.loc[all_data['expt_group'] == 'simple', 'expt_curriculum'] = 'simple_blocked_magician'
 all_data = all_data[all_data.expt_block != 9]
 all_data = all_data[~all_data['expt_block'].isnull()]
@@ -66,9 +66,10 @@ print('exclude {0} - too many time-outs'.format(n_many_timeouts))
 all_data = all_data[all_data['n_timeout'] <= timeout_thres]
 
 # include only ppl that learned
-n_no_learning = all_data[~all_data['learned_1'] | ~all_data['learned_2'] | ~all_data['learned_3'] | ~all_data['learned_4']]['expt_subject'].nunique()
-all_data = all_data.loc[all_data['learned_1'] & all_data['learned_2'] & all_data['learned_3'] & all_data['learned_4']]
+min_train_thresh = 0.9
+n_no_learning =all_data[all_data['max_training_score']<min_train_thresh]['expt_turker'].nunique()
 print('exclude {0} - not learning throughout blocks '.format(n_no_learning))
+#all_data = all_data[all_data['max_training_score']>min_train_thresh]
 
 col_group = ['expt_group', 'expt_curriculum', 'expt_block']
 all_data.groupby(col_group)['expt_subject'].nunique()
@@ -84,7 +85,10 @@ nsubj, n_ttrials = np_acc.shape
 #nsubj, n_ttrials = np_rt.shape
 
 # fetch modalities per participant
-modalities = all_data.groupby(['expt_turker', 'expt_curriculum'],as_index=False).sum()['expt_curriculum'].to_numpy()
+modalities = all_data[['expt_turker', 'expt_curriculum']].drop_duplicates()['expt_curriculum'].to_numpy()
+len(modalities)
+
+max_score = all_data[['expt_turker', 'max_training_score']].drop_duplicates()['max_training_score'].to_numpy()
 len(modalities)
 
 #moving average (to capture progression within blocks as well)
@@ -102,7 +106,11 @@ fig, axs = plt.subplots(len(uniq_modalities), 1, figsize=(15, 12), dpi=300, face
 for i, (ax, modality) in enumerate(zip(axs, uniq_modalities)):
 
     # Select subjects for this modality
-    idx = modality == modalities
+    idx_mod = modality == modalities
+    idx_ceil = max_score > min_train_thresh
+    idx_low = max_score < min_train_thresh
+
+    idx = idx_mod & idx_low
 
     m_subj = mov_avg[idx,:]
     m = np.nanmean(m_subj, axis=0)
@@ -113,6 +121,7 @@ for i, (ax, modality) in enumerate(zip(axs, uniq_modalities)):
     ax.errorbar(
             x = center_idx,
             y = m,
+            color = 'b',
             yerr = 2 * se,
             markersize = 5,
             marker = 'D',
@@ -124,11 +133,44 @@ for i, (ax, modality) in enumerate(zip(axs, uniq_modalities)):
         ax.errorbar(
             x = center_idx + np.random.normal(0, 0.1, center_idx.size),
             y = m_subj[k],
+            color = 'b',
             markersize = 3,
             marker = 'o',
             alpha = .1,
             lw = 0.3, # Do not plot the lines (this is messy)
         )
+
+    # plot second group
+    idx = idx_mod & idx_ceil
+
+    m_subj = mov_avg[idx,:]
+    m = np.nanmean(m_subj, axis=0)
+    se = np.nanstd(m_subj, axis=0)/np.sqrt(idx.sum())
+
+    center_idx = np.array(range(0,len(m)))
+
+    ax.errorbar(
+            x = center_idx,
+            y = m,
+            color = 'r',
+            yerr = 2 * se,
+            markersize = 5,
+            marker = 'D',
+            alpha = 1
+        )
+
+      # Plot individual data points
+    for k in range(idx.sum()):
+        ax.errorbar(
+            x = center_idx + np.random.normal(0, 0.1, center_idx.size),
+            y = m_subj[k],
+            color = 'r',
+            markersize = 3,
+            marker = 'o',
+            alpha = .1,
+            lw = 0.3, # Do not plot the lines (this is messy)
+        )
+
      # Aesthetics
     ax.set_title(modality, fontweight='bold')
     ax.set_xlabel('Trial #')
@@ -145,3 +187,4 @@ for i, (ax, modality) in enumerate(zip(axs, uniq_modalities)):
     ax.axhline(1/2., color='k', ls='--', alpha=.4)
 
 plt.tight_layout()
+plt.savefig('results/prolific/v3/learners_at_ceiling.jpg', bbox_inches="tight")

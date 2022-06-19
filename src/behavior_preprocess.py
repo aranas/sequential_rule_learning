@@ -160,6 +160,7 @@ def fetch_demographics(path_to_demographic, path_to_data):
 
 def pd2np(all_data, col_group, col_value):
     """ Converts data in pandas dataframe into multidimensional numpy array
+    It will sort the output based on col_group[0]!
 
     Parameters:
         all_data (df) : pandas dataframe with one trial per row
