@@ -111,7 +111,7 @@ def output_submission_details(data, fname):
         data (dataFrame) : pandas dataframe with trial information per row
         fname (str) : string with subject name for which info is extracted
     """
-    iloc = data.index[data['expt_turker'] == fname].tolist()[0]
+    iloc = data.index[data['expt_subject'] == fname].tolist()[0]
     #print out info from servers side
     print('Subject ID: ' + data['expt_turker'][iloc])
     print('Prolific ID: ' + data['expt_subject'][iloc])

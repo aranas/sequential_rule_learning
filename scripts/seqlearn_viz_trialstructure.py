@@ -5,11 +5,12 @@ import itertools
 import pickle
 import operator
 import numpy as np
+from numpy import matlib
 import matplotlib.pyplot as plt
 import src.my_py_utils as util
 
 #%%
-PATH_DATA = "data/v3/data/test"
+PATH_DATA = "data/v3/data"
 
 with open(''.join([PATH_DATA, '/all_data', '_csv']), 'rb') as file:
     all_data = pickle.load(file)
