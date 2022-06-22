@@ -28,26 +28,26 @@ variables are to file as a dict to 'PATH_WRITE/{NSTEPS}_{rule_names}.txt'
 from operator import itemgetter
 import pickle
 import numpy as np
-import seqlearn_magicspell as magic
+import scripts.seqlearn_magicspell as magic
 
 #%% SET PARAMETERS
 PATH_WRITE = 'results/online_experiment/stimulus_lists'
-SUFFIX = '_C_blockinput'
-block_rule_names = [['forceB', 'crossB'], ['forceB', 'crossB'], #training
-                    ['forceB', 'crossB'], ['forceB', 'crossB'], #training
-                    ['forceB', 'crossB'], ['forceB', 'crossB'], #training
-                    ['forceB', 'crossB'], ['forceB', 'crossB'], #training
+SUFFIX = '_SS_long'
+block_rule_names = [['forceB', 'none'], ['forceB', 'none'], ['forceB', 'none'],#training
+                    ['crossB', 'none'], ['crossB', 'none'], ['crossB', 'none'],#training
+                    ['forceB', 'none'], ['forceB', 'none'], ['forceB', 'none'],#training
+                    ['crossB', 'none'], ['crossB', 'none'], ['crossB', 'none'],#training
                     ['forceB', 'crossB'], #near transfer block
                     ['forceB', 'crossB'], #1-step rule check
                     ['forceB', 'crossB']] #far transfer block
-block_inputs = [[0, 1], [0, 1], [0, 1], [0, 1], [0, 1], [0, 1], [0, 1], [0, 1], [0, 1], [0, 1], [12, 13]] # use 12 & 13 for non-random images
-block_n_steps = [2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 2]
-block_feedback = [1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1]
-block_randomise = [1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0]
+block_inputs = [[0, 1], [0, 1], [0, 1], [0, 1], [0, 1], [0, 1], [0, 1], [0, 1], [0, 1], [0, 1], [0, 1], [0, 1], [0, 1], [0, 1], [12, 13]] # use 12 & 13 for non-random images
+block_n_steps = [2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 2]
+block_feedback = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1]
+block_randomise = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0]
 
-curriculum_block_input = True
+curriculum_block_input = False
 curriculum_block_mag = False
-n_trainblocks = 8
+n_trainblocks = 12
 
 all_param = [PATH_WRITE, block_rule_names,
              block_inputs, block_n_steps, block_feedback, block_randomise,
