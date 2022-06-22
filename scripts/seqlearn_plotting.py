@@ -92,8 +92,8 @@ max_score = all_data[['expt_turker', 'max_training_score']].drop_duplicates()['m
 len(modalities)
 
 #moving average (to capture progression within blocks as well)
-window_size = 16
-stride = 16
+window_size = 32
+stride = 32
 mov_avg = np.squeeze([[np.nanmean(np_acc[:,i:i+window_size],axis=1)]for i in range(0, n_ttrials, stride)
                    if i+window_size <= n_ttrials]).T
 mov_avg.shape
@@ -175,16 +175,39 @@ for i, (ax, modality) in enumerate(zip(axs, uniq_modalities)):
     ax.set_title(modality, fontweight='bold')
     ax.set_xlabel('Trial #')
     ax.set_ylabel('Accuracy')
+    ax.set_xticks(center_idx)
+    ax.set_xticklabels(center_idx*32)
     #ax.set_ylim(5, 7) #for RTs
 
-    ax.axvline(4, color='k', ls='-', alpha=.4)
-    ax.axvline(8, color='k', ls='-', alpha=.4)
-    ax.axvline(12, color='k', ls='-', alpha=.4)
-    ax.axvline(16, color='k', ls='-', alpha=.4)
-    ax.axvline(18, color='k', ls='-', alpha=.4)
+    ax.axvline(1.5, color='k', ls='-', alpha=.4)
+    ax.axvline(3.5, color='k', ls='-', alpha=.4)
+    ax.axvline(5.5, color='k', ls='-', alpha=.4)
+    ax.axvline(7.5, color='k', ls='-', alpha=.4)
+    ax.axvline(8.5, color='k', ls='-', alpha=.4)
 
 
     ax.axhline(1/2., color='k', ls='--', alpha=.4)
 
 plt.tight_layout()
-plt.savefig('results/prolific/v3/learners_at_ceiling.jpg', bbox_inches="tight")
+plt.savefig('results/prolific/v3/learners_split2.jpg', bbox_inches="tight")
+
+#%%
+
+#%% Mann-Whitney-Test
+idx_ceil = max_score > min_train_thresh
+
+idx_mod = 'simple_blocked_magician' == modalities
+idx = idx_mod & idx_ceil
+m_subj_simple = mov_avg[idx,:]
+
+idx_mod = 'blocked_magician' == modalities
+idx = idx_mod & idx_ceil
+m_subj_complex = mov_avg[idx,:]
+
+nsub, ntim = m_subj.shape
+test_results = {}
+for tim in list(range(ntim)):
+    test_results[str(tim)] = mannwhitneyu(m_subj_simple[:,tim], m_subj_complex[:,tim])
+
+np.mean(m_subj_simple,axis=0)
+np.mean(m_subj_complex,axis=0)
