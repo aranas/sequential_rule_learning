@@ -31,12 +31,12 @@ import numpy as np
 import scripts.seqlearn_magicspell as magic
 
 #%% SET PARAMETERS
-PATH_WRITE = 'results/online_experiment/stimulus_lists'
+PATH_WRITE = '/Users/sophiearana/Documents/Work/Research/SeqLearn/Analysis/results/online_experiment/stimulus_lists'
 SUFFIX = '_SS_long'
-block_rule_names = [['forceB', 'none'], ['forceB', 'none'], ['forceB', 'none'],#training
-                    ['crossB', 'none'], ['crossB', 'none'], ['crossB', 'none'],#training
+block_rule_names = [['crossB', 'none'], ['crossB', 'none'], ['crossB', 'none'],#training
                     ['forceB', 'none'], ['forceB', 'none'], ['forceB', 'none'],#training
                     ['crossB', 'none'], ['crossB', 'none'], ['crossB', 'none'],#training
+                    ['forceB', 'none'], ['forceB', 'none'], ['forceB', 'none'],#training
                     ['forceB', 'crossB'], #near transfer block
                     ['forceB', 'crossB'], #1-step rule check
                     ['forceB', 'crossB']] #far transfer block
@@ -47,18 +47,20 @@ block_randomise = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0]
 
 curriculum_block_input = False
 curriculum_block_mag = False
+curriculum_simple = True
+
 n_trainblocks = 12
 
 all_param = [PATH_WRITE, block_rule_names,
              block_inputs, block_n_steps, block_feedback, block_randomise,
-             curriculum_block_input, curriculum_block_mag]
+             curriculum_block_input, curriculum_block_mag, curriculum_simple]
 
 #save parameters to file
 with open(''.join([PATH_WRITE, 'parameters', SUFFIX]), 'wb') as file:
     pickle.dump(all_param, file)
 
 #with open(''.join([PATH_WRITE, '/parameters', SUFFIX]), 'rb') as file:
-#    x = pickle.load
+#    x = pickle.load(file)
 
 #%% GENERATE VARS based on parameters & generate sequences
 if len(set([len(block_n_steps), len(block_rule_names), len(block_inputs)])) > 1:
@@ -128,6 +130,23 @@ if curriculum_block_input | curriculum_block_mag:
             new_seqs.append(sel)
 
     seqs = new_seqs
+
+elif curriculum_simple:
+    n_block = 0
+    block = seqs[n_block]
+    for n_block, block in enumerate(seqs):
+        if n_block < n_trainblocks: #only adjust on training blocks
+            dup = []
+            idx_del = []
+            for n_seq, single_seq in enumerate(block):
+                if (single_seq[1][0] == single_seq[2][0]): #if rule is same on step 1 & 2
+                    if single_seq[1][0] == 0:
+                    # if rule is none - duplicate
+                        dup.append(single_seq)
+                    else:# if rule is not none - delete
+                        idx_del.append(n_seq)
+            seqs[n_block] = [v for i, v in enumerate(seqs[n_block]) if i not in idx_del]
+            seqs[n_block] = seqs[n_block] + dup
 
 #%% compute total trials
 N_TOTAL_TRLS = 0
