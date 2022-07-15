@@ -14,7 +14,7 @@ import src.my_py_utils as util
 #%%
 PATH_DATA = "data/v3/preprocessed"
 
-with open(''.join([PATH_DATA, '/all_data', '_csv']), 'rb') as file:
+with open(''.join([PATH_DATA, '/june_data', '_csv']), 'rb') as file:
     all_data = pickle.load(file)
 
 subjs = all_data[all_data['expt_group'] == 'simple']['expt_subject'].unique()
@@ -29,9 +29,9 @@ df_log = pd.DataFrame([i.split(' ')[1:] for i in log])
 # for each subject, get order of trials based on indices in unique sequence list
 subj = subjs[0]
 for subj in subjs:
-    if subj != 'jK24bbd7lSAM':
+    #if subj != 'jK24bbd7lSAM':
     #if int(df_log[df_log.iloc[:, -1] == subj + '.txt'][9].values[0]) < 27:
-        continue
+    #    continue
     # get all unique sequences & map individual trial order re index in unique list of seqs
     unique_seq = []
     iloc = all_data.index[all_data['expt_subject'] == subj].tolist()[0]
@@ -70,7 +70,7 @@ for subj in subjs:
         state = np.repeat(np.vstack(block_data['state']).flatten(), n_step)
 
         all_trl_idx.append(unique_idx)
-        trialstruct.append(np.vstack([steps, rule, ingredient, state]))
+        trialstruct.append(np.vstack([steps, magician, ingredient, state]))
 
     trialstruct = np.column_stack((itertools.zip_longest(*trialstruct, fillvalue=np.nan)))
 

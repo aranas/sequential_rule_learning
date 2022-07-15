@@ -9,15 +9,27 @@ from collections import Counter
 import matplotlib.pyplot as plt
 import src.behavior_preprocess as prep
 
-#%% GET ALL DATA INTO DATAFRAME
+#%% SCRIPT PARAMETERS
 PATH_DATA = "data/v3/data"
 PATH_DEMOGRAPHIC = "data/prolific/demographics"
 PATH_RESULTS = "data/v3/preprocessed"
 
+iblock_far = 10 #index of far transfer block
+
+
+#%%GET ALL DATA INTO DATAFRAME
+
 df_subject = prep.fetch_demographics(PATH_DEMOGRAPHIC, PATH_DATA)
+
+with open('data_log.txt', "r") as file:
+    log = file.read().split('\n')
+df_log = pd.DataFrame([i.split(' ')[1:] for i in log])
 
 all_data = []
 for file in os.listdir(PATH_DATA):
+    #if df_log[df_log.iloc[:, -1] == file][8].values[0] != 'Jun':
+    #    continue
+
     PATH_TO_FILE = '/'.join([PATH_DATA, file])
     if not PATH_TO_FILE.endswith('.txt'):
         continue
@@ -29,8 +41,6 @@ all_data = pd.concat(all_data).reset_index(drop=True)
 all_data = all_data.drop(0)
 all_data.columns = [str.split('-', 1)[1] for str in all_data.columns]
 all_data = all_data.fillna(value=np.nan)
-
-all_data = all_data.sort_values('expt_turker') # some transformations do automatic grouping later, so we force sorting here to begin with
 
 #%% ACCURACY
 #how many submissions per
@@ -77,11 +87,10 @@ for subj in all_subj:
 
 #%% Save bonus to file
 with open('bonus.csv', 'w') as out:
-    datasel = all_data[(all_data.expt_group == 'simple') & (all_data.expt_curriculum == 'interleaved')]
-    len(datasel.groupby('expt_subject'))
+    datasel = all_data[(all_data.expt_group == 'simple') & (all_data.expt_curriculum == 'semi-interleaved')]
     for subj, subj_data in datasel.groupby('expt_subject'):
-        if int(df_log[df_log.iloc[:, -1] == subj + '.txt'][9].values[0]) < 29:
-            continue
+        #if int(df_log[df_log.iloc[:, -1] == subj + '.txt'][9].values[0]) < 29:
+        #    continue
         prolific_id = subj_data['expt_turker'].unique()
         bonus_vec = np.array(subj_data['block_bonus'].iloc[0])
         bonus_vec = bonus_vec[bonus_vec != np.array(None)]
@@ -101,26 +110,24 @@ all_data = pd.merge(all_data,timeouts, on='expt_turker')
 
 df_acc = all_data.groupby(['expt_turker', 'expt_block'], as_index=False)['resp_correct'].apply(lambda x: pd.Series({'acc':
                                                                 x.sum()/x.count()}))
-# add info generaliser
+# add info on far transfer
 df_acc['generaliser'] = False
-for subj in df_acc.loc[(df_acc.acc > 0.6) & (df_acc.expt_block == 10),'expt_turker']:
+for subj in df_acc.loc[(df_acc.acc > 0.6) & (df_acc.expt_block == iblock_far),'expt_turker']:
     df_acc.loc[df_acc.expt_turker == subj,'generaliser'] = True
-
-all_data = pd.merge(all_data,df_acc[['expt_turker', 'generaliser']], on='expt_turker')
-
-# add info learning conservative
-df_learner = df_acc.groupby(['expt_turker'], as_index=False).apply(lambda x: pd.Series({'learned_1':
-                                                x['acc'].values[0] < x['acc'].values[1],
-                                                'learned_2': x['acc'].values[2] < x['acc'].values[3],
-                                                'learned_3': x['acc'].values[4] < x['acc'].values[5],
-                                                'learned_4': x['acc'].values[6] < x['acc'].values[7]}))
-all_data = pd.merge(all_data,df_learner, on='expt_turker')
+all_data = pd.merge(all_data,df_acc.loc[df_acc.expt_block==iblock_far][['expt_turker','generaliser']], on='expt_turker')
 
 #add info any learning
 df_learner = df_acc.groupby(['expt_turker'], as_index=False).apply(lambda x: pd.Series({'max_training_score': np.max(x['acc'].values[:7]) }))
 all_data = pd.merge(all_data,df_learner, on='expt_turker')
 
-all_data.keys()
+#add info 1-step rule
+step1_acc = all_data.loc[(all_data.expt_block==9) & (all_data.rule==3)].groupby(['expt_turker'], as_index=False)['resp_correct'].apply(
+            lambda x: pd.Series({'ruleF_acc': np.nanmean(x) }))
+all_data = pd.merge(all_data, step1_acc, on='expt_turker')
+step1_acc = all_data.loc[(all_data.expt_block==9) & (all_data.rule==5)].groupby(['expt_turker'], as_index=False)['resp_correct'].apply(
+            lambda x: pd.Series({'ruleF_acc': np.nanmean(x) }))
+all_data = pd.merge(all_data, step1_acc, on='expt_turker')
+
 
 #%% Save data
 
